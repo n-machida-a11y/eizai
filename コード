@@ -1,6 +1,5 @@
-/**
- * @OnlyCurrentDoc
- */
+// (v2.5 修正) @OnlyCurrentDoc の記述を削除しました。
+// Google Drive へのアクセスに必要です。
 
 // -----------------------------------------------
 // グローバル変数 & 設定
@@ -71,10 +70,12 @@ function doGet(e) {
 
 /**
  * ログインユーザーの情報を取得 (v21 修正: 役職/部門/職種コード取得)
+ * (v2.6 修正: executeAs: ME に対応するため getActiveUser -> getEffectiveUser)
  * @returns {object} { employeeInfo: { id, name, email, positionCode, departmentCode, jobCategoryCode }, isManager: boolean }
  */
 function getUserInfo_() {
-  var email = Session.getActiveUser().getEmail();
+  // (v2.6 修正) 実行者(ME)ではなく、アクセスしたユーザーのメールを取得する
+  var email = Session.getEffectiveUser().getEmail(); 
   // email = 'manager.test@example.com'; // --- テスト用 ---
   // email = 'member.test@example.com'; // --- テスト用 ---
   
@@ -115,12 +116,15 @@ function getUserInfo_() {
 }
 
 /**
- * 設定シートをK-Vオブジェクトで取得 (キャッシュ対応) (v9 修正)
+ * 設定シートをK-Vオブジェクトで取得 (v9 修正)
+ * (v2.3 修正: 空白除去, 両方向読み込み)
+ * (v2.4 修正: 1行目から読み込むように変更)
  * @returns {object} 設定の K-V
  */
 function getSettings_() {
   var cache = CacheService.getScriptCache();
-  var CACHE_KEY = 'SETTINGS_CACHE';
+  // (v2.3 修正) キャッシュキーを変更して強制リロード
+  var CACHE_KEY = 'SETTINGS_CACHE_V3';
   
   var cached = cache.get(CACHE_KEY);
   if (cached) {
@@ -131,7 +135,8 @@ function getSettings_() {
   var sheet = ss.getSheetByName(SHEET_NAMES.SETTINGS);
   
   // v8 修正: シート存在チェック
-  if (!sheet || sheet.getLastRow() < 2) {
+  // (v2.4 修正) 1行目から読むので >= 1 に変更
+  if (!sheet || sheet.getLastRow() < 1) { 
     return {};
   }
   
@@ -140,12 +145,22 @@ function getSettings_() {
     return {}; // 少なくとも2列必要
   }
 
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+  // (v2.4 修正) 1行目から読む (ヘッダー行なし)
+  // 変更前: getRange(2, 1, sheet.getLastRow() - 1, 2)
+  var data = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues(); 
   
   var settings = {};
   for (var i = 0; i < data.length; i++) {
-    if (data[i][0]) { // キーがある行のみ
-      settings[data[i][0]] = data[i][1];
+    // (v2.3 修正) 空白を除去 (.trim())
+    var keyA = data[i][0] ? String(data[i][0]).trim() : null; // (Column A)
+    var keyB = data[i][1] ? String(data[i][1]).trim() : null; // (Column B)
+
+    if (keyA) { // キーがある行のみ (Column A)
+      settings[keyA] = data[i][1]; // (Column B)
+    }
+    // (v2.3 修正) B列 -> A列 のパターンも読み込む
+    if (keyB) { // キーがある行のみ (Column B)
+      settings[keyB] = data[i][0]; // (Column A)
     }
   }
   
@@ -162,6 +177,7 @@ function getSettings_() {
 
 /**
  * 日報の保存または申請 (v17 修正: JSからの日付形式は yyyy-MM-dd)
+ * (v2.2 修正: 税項目保存)
  * @param {object} data { header, activities (圧縮済配列), expenses }
  * @param {string} status "一時保存" / "申請中"
  * @returns {object} { status: "success", message: "..." }
@@ -216,6 +232,7 @@ function saveOrSubmitDailyReport(data, status) {
           useDate: header.date, // 利用日 (v17: JSから "yyyy-MM-dd" 形式)
           timeSlot: activities.length > 0 ? activities[0].startTime : '07:00' // v5: 仮の時間枠
           // v20: areaCode は自動計算日当には不要
+          // v2.2: tax* は自動計算日当には不要
         });
       }
     }
@@ -258,18 +275,23 @@ function saveOrSubmitDailyReport(data, status) {
     });
     
     // (v20 修正) 「経費明細」シートに I列 = 'エリアコード' を追加想定
+    // (v2.2 修正) 「経費明細」シートに J, K, L列 = 税関連 を追加想定
     // (v17 注意) 「経費明細」シートの H列 = 時間枠 であること
     var expensesRows = expenses.map(function(exp) {
       return [
-        reportId, // 日報ID
-        exp.expenseId, // 経費ID
-        exp.itemCode, // 経費項目コード
-        exp.amount, // 金額
-        exp.receiptUrl, // 領収書URL
-        exp.remarks, // 備考 (v5: exp.note -> exp.remarks)
-        exp.useDate, // 利用日 (v17: JSから "yyyy-MM-dd" 形式で渡される)
-        exp.timeSlot || '', // v5: 時間枠 (H列)
-        exp.areaCode || '' // v20: エリアコード (I列)
+        reportId, // A: 日報ID
+        exp.expenseId, // B: 経費ID
+        exp.itemCode, // C: 経費項目コード
+        exp.amount, // D: 金額 (税込)
+        exp.receiptUrl, // E: 領収書URL
+        exp.remarks, // F: 備考
+        exp.useDate, // G: 利用日
+        exp.timeSlot || '', // H: 時間枠
+        exp.areaCode || '', // I: エリアコード
+        // (v2.2 修正) J, K, L列に対応するデータを追加
+        exp.taxExcludedAmount || null, // J: 税抜金額
+        exp.taxRate || null,           // K: 税率 (選択値)
+        exp.taxRateCustom || null      // L: 税率(他) (手入力値)
       ];
     });
 
@@ -285,6 +307,7 @@ function saveOrSubmitDailyReport(data, status) {
     if (expensesRows.length > 0) {
       var expSheet = ss.getSheetByName(SHEET_NAMES.EXPENSES);
       // v20 修正: 書き込み列数を動的に (expensesRows[0].length)
+      // v2.2 修正: 税関連 (J,K,L) を含む列数
       expSheet.getRange(expSheet.getLastRow() + 1, 1, expensesRows.length, expensesRows[0].length)
         .setValues(expensesRows);
     }
@@ -318,25 +341,25 @@ function saveOrSubmitDailyReport(data, status) {
 }
 
 /**
- * AI-OCRによる画像処理 (v2)
+ * (v2.2 新規) AI-OCRを廃止し、領収書画像を指定フォルダに保存してURLを返す
  * @param {string} base64Image
- * @returns {object} { status, url, ocrData }
+ * @returns {object} { status, url }
  */
-function processImageOCR(base64Image) {
+function uploadReceiptImage(base64Image) {
   try {
     var settings = getSettings_();
-    var folderId = settings.RECEIPT_FOLDER_ID;
-    var apiKey = settings.API_KEY; // Gemini APIキー
-    var prompt = settings.AI_PROMPT_TEMPLATE; // AIプロンプト
+    // (v2.2 修正) (getSettings_ の修正により、A列のキーが参照可能)
+    var folderId = settings['RECEIPT_FOLDER_ID'];
 
-    if (!folderId || !apiKey || !prompt) {
-      throw new Error('設定シート (フォルダID, APIキー, AIプロンプト) を確認してください。');
+    if (!folderId) {
+      // (v2.2 修正) エラーメッセージのキーを修正
+      throw new Error('設定シートのA列またはB列に「RECEIPT_FOLDER_ID」のキーが見つかりません。');
     }
 
     // 1. 画像デコードとDrive保存
     var blob = Utilities.newBlob(
       Utilities.base64Decode(base64Image.split(',')[1]), 
-      'image/png', 
+      'image/png', // MIMEタイプは固定（またはクライアントから渡す）
       'receipt-' + new Date().getTime() + '.png'
     );
     var folder = DriveApp.getFolderById(folderId);
@@ -345,58 +368,26 @@ function processImageOCR(base64Image) {
     
     var fileUrl = file.getUrl();
 
-    // 2. Gemini API 呼び出し (v1仕様: gemini-2.5-flash-preview-09-2025, JSONモード)
-    var apiUrl = 'https://generativelage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=' + apiKey;
-    
-    var payload = {
-      "contents": [
-        {
-          "parts": [
-            { "text": prompt }, // 指示文 (設定シートから)
-            {
-              "inlineData": {
-                "mimeType": "image/png",
-                "data": base64Image.split(',')[1]
-              }
-            }
-          ]
-        }
-      ],
-      "generationConfig": {
-        "responseMimeType": "application/json" // v1仕様: JSONモード
-      }
-    };
-    
-    var options = {
-      'method': 'post',
-      'contentType': 'application/json',
-      'payload': JSON.stringify(payload),
-      'muteHttpExceptions': true
-    };
-
-    var response = UrlFetchApp.fetch(apiUrl, options);
-    var responseText = response.getContentText();
-    var jsonResponse = JSON.parse(responseText);
-
-    // 3. レスポンス解析
-    if (response.getResponseCode() !== 200 || !jsonResponse.candidates) {
-      throw new Error('AI-OCRの解析に失敗しました: ' + responseText);
-    }
-    
-    var ocrText = jsonResponse.candidates[0].content.parts[0].text;
-    var ocrData = JSON.parse(ocrText); // AIが返したJSON文字列をパース
+    // 2. (削除) Gemini API 呼び出しは行わない
 
     return { 
       status: "success", 
-      url: fileUrl, 
-      ocrData: ocrData // パース済みのJSONオブジェクト
+      url: fileUrl // DriveのURLのみを返す
     };
 
   } catch (e) {
-    Logger.log('processImageOCR エラー: ' + e);
-    return { status: "error", message: "OCR処理エラー: " + e.message };
+    Logger.log('uploadReceiptImage エラー: ' + e);
+    return { status: "error", message: "アップロード処理エラー: " + e.message };
   }
 }
+
+
+// (v2.2 削除) processImageOCR 関数は不要
+/*
+function processImageOCR(base64Image) {
+  ...
+}
+*/
 
 
 // -----------------------------------------------
@@ -421,6 +412,7 @@ function getPendingReports() {
 
 /**
  * (C) 特定の日報の詳細データを取得 (v20 修正: 経費キーマッピング)
+ * (v2.2 修正: 税項目マッピング)
  * @param {string} reportId
  * @returns {object} { header, activities, expenses }
  */
@@ -450,6 +442,7 @@ function getReportDetails(reportId) {
     
     // 3. 経費明細
     // (v20 注意) 「経費明細」シートに '時間枠' (H列), 'エリアコード' (I列) が必要
+    // (v2.2 注意) J, K, L列 に 税抜金額, 税率, 税率(他) が必要
     var expensesData = getSheetData_(SHEET_NAMES.EXPENSES, ss);
     var expenses = expensesData.filter(function(row) {
       // v11 修正: 両方を文字列に変換して比較
@@ -469,12 +462,17 @@ function getReportDetails(reportId) {
         // スプレッドシートの列名 -> JSのキー名
         expenseId: exp['経費ID'],
         itemCode: exp['経費項目コード'],
-        amount: exp['金額'],
+        amount: exp['金額'], // 税込
         receiptUrl: exp['領収書URL'],
         remarks: exp['備考'],
         useDate: exp['利用日'], // (v17) yyyy/MM/dd
         timeSlot: exp['時間枠'], // (v17) '時間枠' ヘッダーから取得
         areaCode: exp['エリアコード'], // v20: 'エリアコード' ヘッダーから取得
+        
+        // (v2.2 修正) 税関連のキーをマッピング
+        taxExcludedAmount: exp['税抜金額'],
+        taxRate: exp['税率'],
+        taxRateCustom: exp['税率(他)'],
         
         // 元々あったマッピング (v5)
         itemName: expenseItemsMap[exp['経費項目コード']] || exp['経費項目コード'],
@@ -487,7 +485,7 @@ function getReportDetails(reportId) {
     return {
       header: header || {},
       activities: activities,
-      expenses: expenses // (v17) マッピング済みの配列
+      expenses: expenses // (v17, v2.2) マッピング済みの配列
     };
   } catch (e) {
     // v10 修正: エラー内容を Logger.log に記録する
@@ -604,6 +602,7 @@ function rejectReport(reportId, rejectionReason) {
 
 /**
  * (D) 承認済みの経費データを取得 (v5 修正: 戻り値の構造を変更)
+ * (v2.2 修正: 税項目マッピング)
  * @returns {object} { reports: [], expenses: [] }
  */
 function getApprovedExpenses() {
@@ -643,13 +642,27 @@ function getApprovedExpenses() {
   approvedExpenses = approvedExpenses.map(function(exp) {
     // v5: exp.itemName -> exp['経費項目名']
     exp['itemName'] = expenseItemsMap[exp['経費項目コード']] || exp['経費項目コード'];
+    
+    // (v2.2 修正) getReportDetails と同様のキーマッピングを追加
+    exp.expenseId = exp['経費ID'];
+    exp.itemCode = exp['経費項目コード'];
+    exp.amount = exp['金額']; // 税込
+    exp.receiptUrl = exp['領収書URL'];
+    exp.remarks = exp['備考'];
+    exp.useDate = exp['利用日'];
+    exp.timeSlot = exp['時間枠'];
+    exp.areaCode = exp['エリアコード'];
+    exp.taxExcludedAmount = exp['税抜金額'];
+    exp.taxRate = exp['税率'];
+    exp.taxRateCustom = exp['税率(他)'];
+    
     return exp;
   });
 
   // v5 修正: クライアント側のロジックに合わせる
   return {
     reports: approvedReports,
-    expenses: approvedExpenses
+    expenses: approvedExpenses // (v2.2) マッピング済み
   };
 }
 
@@ -808,6 +821,7 @@ function getMyReports() {
 
 /**
  * (E) 編集用に日報データを取得 (v16 修正: 活動データ展開)
+ * (v2.2 修正: 税項目は getReportDetails 経由で含まれる)
  * @param {string} reportId
  * @returns {object} { status, data, message }
  */
@@ -816,7 +830,7 @@ function getReportDataForEdit(reportId) {
     var userInfo = getUserInfo_();
     var userId = userInfo.employeeInfo.id;
     
-    var details = getReportDetails(reportId); // v17 で経費キーマッピング対応済み (v20で areaCode も)
+    var details = getReportDetails(reportId); // v17, v2.2 で経費キーマッピング対応済み
     
     if (!details.header || !details.header['日報ID']) {
       // v10 修正: getReportDetails が空を返した場合のログ
