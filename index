@@ -116,6 +116,15 @@
     #E-my-reports-list-body tr {
       cursor: pointer;
     }
+    
+    /* (v18 新規) カスタムモーダルはローディングより手前に表示 */
+    .modal-backdrop {
+      z-index: 10000;
+    }
+    .modal {
+      z-index: 10001;
+    }
+    
   </style>
 </head>
 <body>
@@ -159,6 +168,7 @@
           <? } ?>
         </ul>
         <div class="navbar-text text-white">
+          <!-- (v15 修正) EMPLOYEE_INFO.employeeName -> EMPLOYEE_INFO.name -->
           <span id="user-info-display"></span> <i class="bi bi-person-circle"></i>
         </div>
       </div>
@@ -171,6 +181,9 @@
     <!-- ===== (A) 日報入力ビュー ===== -->
     <div id="view-A-daily-report" class="app-view">
       <h3 class="mb-3"><i class="bi bi-pencil-square"></i> 日報入力・編集</h3>
+
+      <!-- (v15 修正) 差戻し理由 表示欄 -->
+      <div id="A-rejection-reason" class="alert alert-danger" style="display: none;"></div>
 
       <div class="card shadow-sm mb-4">
         <div class="card-body">
@@ -210,6 +223,21 @@
                 <h4 id="A-mileageDisplay" class="text-primary mb-0">0 km</h4>
               </div>
             </div>
+            
+            <!-- (v15 修正) 活動時間合計 表示欄 -->
+            <hr>
+            <h5 class="mt-3">活動時間 合計</h5>
+            <div class="row g-3 align-items-end">
+              <div class="col-6 col-md-3">
+                <label class="form-label">移動時間 合計</label>
+                <h4 id="A-totalMovementTime" class="text-info mb-0">0.0 時間</h4>
+              </div>
+              <div class="col-6 col-md-3">
+                <label class="form-label">商談時間 合計</label>
+                <h4 id="A-totalMeetingTime" class="text-info mb-0">0.0 時間</h4>
+              </div>
+            </div>
+            
           </form>
         </div>
       </div>
@@ -247,12 +275,13 @@
         </div>
       </div>
       
-      <!-- v7 修正: 活動区分の datalist を更新 (出金 -> 出勤) -->
+      <!-- (v15 修正) 活動区分の datalist を更新 (休憩を追加) -->
       <datalist id="activity-types-list">
         <option value="出勤">
         <option value="退社">
         <option value="移動">
         <option value="商談">
+        <option value="休憩"> <!-- 追加 -->
         <option value="その他">
       </datalist>
 
@@ -309,6 +338,12 @@
             <div class="col-12 mt-2">
               <strong>備考:</strong> <pre id="C-header-remarks" class="bg-light p-2 rounded mb-0"></pre>
             </div>
+            
+            <!-- (v18 新規) 差戻し理由 (詳細画面) -->
+            <div class="col-12 mt-2" id="C-rejection-reason-wrapper" style="display: none;">
+              <strong>差戻し理由:</strong>
+              <pre id="C-rejection-reason" class="bg-danger-subtle text-danger-emphasis p-2 rounded mb-0"></pre>
+            </div>
           </div>
         </div>
       </div>
@@ -339,6 +374,8 @@
           <table class="table table-striped mb-0">
             <thead class="table-light">
               <tr>
+                <!-- (v19 修正) 「時間帯」列を追加 -->
+                <th>時間帯</th>
                 <th>利用日</th>
                 <th>経費項目</th>
                 <th>金額 (円)</th>
@@ -509,10 +546,52 @@
           </form>
         </div>
         <div class="modal-footer">
+          <!-- (v19 修正) 削除ボタンを追加 -->
+          <button type="button" class="btn btn-outline-danger me-auto" id="M-delete-expense" onclick="deleteExpenseItemA()" style="display: none;">
+            <i class="bi bi-trash"></i> 削除
+          </button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
           <button type="button" class="btn btn-primary" onclick="addExpenseItemA()">
             <i class="bi bi-check-lg"></i> この内容で登録
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- (v18 新規) カスタムAlertモーダル -->
+  <div class="modal fade" id="customAlertModal" tabindex="-1" aria-labelledby="customAlertModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="customAlertModalLabel">情報</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p id="customAlertMessage"></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="customAlertOkButton">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- (v18 新規) カスタムPromptモーダル (差戻し理由用) -->
+  <div class="modal fade" id="customPromptModal" tabindex="-1" aria-labelledby="customPromptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="customPromptModalLabel">差戻し理由</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label for="customPromptInput" class="form-label" id="customPromptMessage">差戻し理由を入力してください（必須）:</label>
+          <textarea class="form-control" id="customPromptInput" rows="3"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+          <button type="button" class="btn btn-primary" id="customPromptOkButton">OK</button>
         </div>
       </div>
     </div>
@@ -549,6 +628,13 @@
 
     // (C) 詳細画面の遷移元
     var viewC_ReturnView = 'view-E-my-reports'; // デフォルトは一覧(E)
+    
+    // (v18 新規) カスタムモーダルのインスタンスとコールバック
+    var customAlertModalInstance;
+    var customPromptModalInstance;
+    var customAlertCallback = null;
+    var customPromptCallback = null;
+
 
     // --- 初期化 -------------------------------------------------------
 
@@ -556,8 +642,8 @@
      * DOM読み込み完了時の初期化処理
      */
     document.addEventListener('DOMContentLoaded', function() {
-      // ユーザー情報表示
-      document.getElementById('user-info-display').textContent = EMPLOYEE_INFO.employeeName || 'ゲスト';
+      // ユーザー情報表示 (v15 修正)
+      document.getElementById('user-info-display').textContent = EMPLOYEE_INFO.name || 'ゲスト';
       
       // ナビゲーションの初期化
       buildNavigation();
@@ -566,6 +652,9 @@
       expenseModalInstance = new bootstrap.Modal(document.getElementById('expenseModal'));
       document.getElementById('expenseModal').addEventListener('shown.bs.modal', onExpenseModalShowA);
       document.getElementById('expenseModal').addEventListener('hidden.bs.modal', onExpenseModalHideA);
+      
+      // (v18 新規) カスタムモーダルの初期化
+      initializeCustomModalsA();
 
       // (A) 経費モーダルの項目マスタ読み込み
       loadExpenseItemsMasterA();
@@ -586,15 +675,6 @@
       
       // デフォルトビューの表示 (日報入力を最初に表示)
       showView('view-A-daily-report');
-      
-      /* (元のコード)
-      // デフォルトビューの表示 (管理者なら承認待ち、そうでなければ日報一覧)
-      if (IS_MANAGER) {
-        showView('view-B-approval-list');
-      } else {
-        showView('view-E-my-reports');
-      }
-      */
     });
 
     /**
@@ -636,6 +716,74 @@
 
 
     // --- 汎用: ビュー切り替え & UI ------------------------------------
+
+    /**
+     * (v18 新規) カスタムAlert/Promptモーダルの初期化
+     */
+    function initializeCustomModalsA() {
+      var alertModalEl = document.getElementById('customAlertModal');
+      customAlertModalInstance = new bootstrap.Modal(alertModalEl);
+      
+      // Alertモーダルが閉じたときにコールバックを実行
+      alertModalEl.addEventListener('hidden.bs.modal', function() {
+        if (typeof customAlertCallback === 'function') {
+          customAlertCallback();
+          customAlertCallback = null; // コールバックをリセット
+        }
+      });
+
+      var promptModalEl = document.getElementById('customPromptModal');
+      customPromptModalInstance = new bootstrap.Modal(promptModalEl);
+      
+      // PromptのOKボタン
+      document.getElementById('customPromptOkButton').addEventListener('click', function() {
+        var value = document.getElementById('customPromptInput').value;
+        if (typeof customPromptCallback === 'function') {
+          customPromptCallback(value); // 入力値を渡す
+          customPromptCallback = null; // コールバックをリセット
+        }
+        customPromptModalInstance.hide();
+      });
+      
+      // Promptが閉じたとき（キャンセル含む）
+      promptModalEl.addEventListener('hidden.bs.modal', function() {
+        if (typeof customPromptCallback === 'function') {
+          customPromptCallback(null); // キャンセル時は null を渡す
+          customPromptCallback = null;
+        }
+      });
+    }
+    
+    /**
+     * (v18 新規) カスタムAlertを表示 (alert() の代替)
+     * @param {string} message 表示するメッセージ
+     * @param {function} [callback] OKボタンを押した後のコールバック
+     */
+    function showCustomAlert(message, callback) {
+      document.getElementById('customAlertMessage').textContent = message;
+      document.getElementById('customAlertModalLabel').textContent = '情報'; // デフォルトタイトル
+      
+      // エラーメッセージの場合、タイトルを変更
+      if (message.indexOf('エラー') > -1 || message.indexOf('失敗') > -1) {
+         document.getElementById('customAlertModalLabel').textContent = 'エラー';
+      }
+      
+      customAlertCallback = callback || null;
+      customAlertModalInstance.show();
+    }
+    
+    /**
+     * (v18 新規) カスタムPromptを表示 (prompt() の代替)
+     * @param {string} message ラベルとして表示するメッセージ
+     * @param {function} callback (value) => {} OKなら入力値、キャンセルならnull
+     */
+    function showCustomPrompt(message, callback) {
+      document.getElementById('customPromptMessage').textContent = message;
+      document.getElementById('customPromptInput').value = ''; // 入力欄をクリア
+      customPromptCallback = callback;
+      customPromptModalInstance.show();
+    }
+    
 
     /**
      * 指定されたIDのビューを表示し、他を非表示にする
@@ -697,7 +845,7 @@
     }
 
     /**
-     * 汎用APIエラーハンドラ (v11 修正: 詳細エラー表示)
+     * 汎用APIエラーハンドラ (v18 修正: カスタムアラート)
      * @param {Error | string} error エラーオブジェクトまたはメッセージ
      */
     function onApiError(error) {
@@ -709,18 +857,16 @@
         message = error;
       } else if (error && error.message) {
         // v10 修正: GAS側で new Error() したエラー
-        // "TypeError: Cannot read properties of null (reading 'header') -> "
-        // のような形式の場合、 "->" 以降を抽出する (簡易的に)
         var gasErrorMsg = error.message.split('->').pop();
         message = gasErrorMsg ? gasErrorMsg.trim() : error.message;
       }
 
       console.error('API Error:', error);
-      alert('エラーが発生しました:\n' + message);
+      showCustomAlert('エラーが発生しました:\n' + message); // (v18 修正)
     }
 
     /**
-     * 今日の日付を "YYYY-MM-DD" 形式で取得
+     * 今日の日付を "YYYY-MM-DD" 形式で取得 (input[type=date]用)
      */
     function getTodayString() {
       var today = new Date();
@@ -736,17 +882,35 @@
     }
     
     /**
-     * 小数点第2位までに丸める
+     * 小数点第1位までに丸める (v15 修正)
      */
     function formatHours(hours) {
-      return (Math.round((hours || 0) * 100) / 100).toFixed(2);
+      return (Math.round((hours || 0) * 10) / 10).toFixed(1); // v15: 少数第1位に変更
+    }
+    
+    /**
+     * (v17 新規) "yyyy-MM-dd" または "yyyy/MM/dd" を "yyyy/MM/dd (曜)" に変換
+     */
+    function formatDateWithDay(dateStr) {
+      if (!dateStr) return '日付不明';
+      try {
+        // ハイフンをスラッシュに置換して Date オブジェクトを生成
+        var date = new Date(dateStr.replace(/-/g, '/'));
+        var yyyy = date.getFullYear();
+        var mm = ('0' + (date.getMonth() + 1)).slice(-2);
+        var dd = ('0' + date.getDate()).slice(-2);
+        var day = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+        return yyyy + '/' + mm + '/' + dd + ' (' + day + ')';
+      } catch (e) {
+        return dateStr; // 変換失敗時はそのまま返す
+      }
     }
 
 
     // --- (A) 日報入力機能 ----------------------------------------------
 
     /**
-     * (A) タイムシートを描画する
+     * (A) タイムシートを描画する (v18 修正: バッジ更新削除)
      */
     function renderTimesheetA() {
       var tbody = document.getElementById('A-timesheet-body');
@@ -813,18 +977,27 @@
         tbody.appendChild(tr);
       }
       
-      // 経費バッジの更新 (編集読み込み時)
-      updateAllExpenseBadgesA();
+      // (v18 修正) 経費バッジの更新は onLoadReportForEditSuccessA 側で実行するため、ここから削除
+      // updateAllExpenseBadgesA(); 
     }
 
     /**
-     * (A) フォーム(A)全体をリセットする
+     * (A) フォーム(A)全体をリセットする (v18 修正: バッジ更新削除)
      */
     function resetFormA() {
       document.getElementById('report-header-form').reset();
       document.getElementById('A-reportId').value = '';
       document.getElementById('A-date').value = getTodayString();
       document.getElementById('A-mileageDisplay').textContent = '0 km';
+      
+      // (v15 修正) 時間合計表示をリセット
+      document.getElementById('A-totalMovementTime').textContent = '0.0 時間';
+      document.getElementById('A-totalMeetingTime').textContent = '0.0 時間';
+      
+      // (v15 修正) 差戻し理由を非表示
+      var reasonDiv = document.getElementById('A-rejection-reason');
+      reasonDiv.textContent = '';
+      reasonDiv.style.display = 'none';
       
       currentActivities = {};
       currentExpenses = [];
@@ -833,10 +1006,12 @@
       document.querySelectorAll('.A-activity-type').forEach(function(el) { el.value = ''; });
       document.querySelectorAll('.A-activity-content').forEach(function(el) { el.value = ''; });
       
-      // 経費バッジをリセット
-      updateAllExpenseBadgesA();
-      
-      // console.log('フォームをリセットしました。');
+      // (v18 修正) 経費バッジをリセット
+      // updateAllExpenseBadgesA(); // ここで呼ぶと onLoadReportForEditSuccessA で問題が起きるため削除
+      // (v18) 代わりに手動でバッジをクリア
+      document.querySelectorAll('.expense-button').forEach(function(badge) {
+        badge.classList.remove('has-expense');
+      });
     }
 
     /**
@@ -866,7 +1041,7 @@
     }
 
     /**
-     * (A) currentActivities オブジェクトを更新
+     * (A) currentActivities オブジェクトを更新 (v15 修正)
      * @param {string} timeSlot "07:00" など
      * @param {'type' | 'content'} key 'type' または 'content'
      * @param {string} value 入力値
@@ -876,7 +1051,9 @@
         currentActivities[timeSlot] = { type: '', content: '' };
       }
       currentActivities[timeSlot][key] = value;
-      // console.log(currentActivities);
+      
+      // (v15 修正) 活動時間をリアルタイム計算
+      calculateTotalsA();
     }
 
     /**
@@ -908,26 +1085,74 @@
         }
       }
     }
+    
+    /**
+     * (A) (v15 新規) 活動時間（移動・商談）を計算して表示
+     */
+    function calculateTotalsA() {
+      var totalMovementHours = 0;
+      var totalMeetingHours = 0;
+      
+      // currentActivities (オブジェクト) をループ
+      var keys = Object.keys(currentActivities);
+      keys.forEach(function(timeSlot) {
+        var act = currentActivities[timeSlot];
+        if (act && act.type) {
+          // 1枠 = 30分 = 0.5時間
+          if (act.type === '移動') {
+            totalMovementHours += 0.5;
+          } else if (act.type === '商談') {
+            totalMeetingHours += 0.5;
+          }
+        }
+      });
+      
+      // HTMLに反映
+      document.getElementById('A-totalMovementTime').textContent = totalMovementHours.toFixed(1) + ' 時間';
+      document.getElementById('A-totalMeetingTime').textContent = totalMeetingHours.toFixed(1) + ' 時間';
+    }
+
 
     /**
-     * (A) 経費モーダルを開く
+     * (A) 経費モーダルを開く (v19 修正: 編集ロジック追加)
      * @param {string} timeSlot "07:00" など
      */
     function openExpenseModalA(timeSlot) {
-      // 経費が複数ある場合、リスト表示する (TODO)
-      // ひとまず新規登録のみ
-      
       // モーダルフォームをリセット
       document.getElementById('expense-form').reset();
       document.getElementById('M-expenseId').value = '';
       document.getElementById('M-timeSlot').value = timeSlot; // 紐づく時間をセット
       
-      // 利用日は日報の日付をデフォルトセット
-      document.getElementById('M-useDate').value = document.getElementById('A-date').value || getTodayString();
-      
       // OCRステータスをリセット
       document.getElementById('M-ocr-status').innerHTML = '';
       document.getElementById('M-receiptUrl').value = '';
+      
+      // (v19 修正) 削除ボタン
+      var deleteButton = document.getElementById('M-delete-expense');
+      
+      // (v19 修正) この時間枠に既存の経費があるか検索
+      // TODO: 現状は1枠1経費のみ対応
+      var expenseToEdit = currentExpenses.find(function(ex) {
+        return ex.timeSlot === timeSlot;
+      });
+      
+      if (expenseToEdit) {
+        // 経費が見つかった場合 (編集モード)
+        document.getElementById('M-expenseId').value = expenseToEdit.expenseId;
+        // (v19 修正) 日付は yyyy/MM/dd (GAS) または yyyy-MM-dd (JS) のため、- に統一
+        document.getElementById('M-useDate').value = expenseToEdit.useDate.replace(/\//g, '-');
+        document.getElementById('M-itemCode').value = expenseToEdit.itemCode;
+        document.getElementById('M-amount').value = expenseToEdit.amount;
+        document.getElementById('M-remarks').value = expenseToEdit.remarks;
+        document.getElementById('M-receiptUrl').value = expenseToEdit.receiptUrl;
+        
+        deleteButton.style.display = 'inline-block'; // 削除ボタン表示
+      } else {
+        // 経費がない場合 (新規モード)
+        // 利用日は日報の日付をデフォルトセット
+        document.getElementById('M-useDate').value = document.getElementById('A-date').value || getTodayString();
+        deleteButton.style.display = 'none'; // 削除ボタン非表示
+      }
       
       expenseModalInstance.show();
     }
@@ -947,6 +1172,7 @@
       document.getElementById('expense-form').reset();
       document.getElementById('M-ocr-status').innerHTML = '';
       document.getElementById('M-receiptImage').value = ''; // fileインプットもクリア
+      document.getElementById('M-delete-expense').style.display = 'none'; // (v19)
     }
 
     /**
@@ -973,12 +1199,12 @@
       };
       reader.onerror = function(error) {
         console.error("File reading error: ", error);
-        alert('ファイルの読み込みに失敗しました。');
+        showCustomAlert('ファイルの読み込みに失敗しました。'); // (v18 修正)
       };
     }
 
     /**
-     * (A) AI-OCR成功時のコールバック
+     * (A) AI-OCR成功時のコールバック (v18 修正: カスタムアラート)
      * @param {object} result { success: true, receiptUrl, ocrData: { date, amount, remarks } }
      */
     function onOcrSuccessA(result) {
@@ -1004,27 +1230,29 @@
         document.getElementById('M-receiptUrl').value = receiptUrl;
         
       } else {
-        onApiError('OCR解析に失敗しました。');
+        onApiError('OCR解析に失敗しました。'); // (v18 修正)
         document.getElementById('M-ocr-status').innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> OCR解析に失敗しました。</span>';
       }
     }
 
     /**
-     * (A) モーダルから経費アイテムを currentExpenses に追加
+     * (A) モーダルから経費アイテムを currentExpenses に追加 (v19 修正: 編集ロジック)
      */
     function addExpenseItemA() {
       // バリデーション
       var form = document.getElementById('expense-form');
       if (!form.checkValidity()) {
         form.classList.add('was-validated');
-        alert('必須項目（利用日、経費項目、金額）を入力してください。');
+        showCustomAlert('必須項目（利用日、経費項目、金額）を入力してください。'); // (v18 修正)
         return;
       }
       form.classList.remove('was-validated');
       
+      var expenseId = document.getElementById('M-expenseId').value;
       var timeSlot = document.getElementById('M-timeSlot').value;
+      
       var expense = {
-        expenseId: document.getElementById('M-expenseId').value || 'temp_' + Date.now(), // 一時ID
+        // expenseId: (v19) 
         timeSlot: timeSlot,
         useDate: document.getElementById('M-useDate').value,
         itemCode: document.getElementById('M-itemCode').value,
@@ -1033,41 +1261,72 @@
         receiptUrl: document.getElementById('M-receiptUrl').value,
       };
       
-      // TODO: 編集の場合は配列を検索して上書き
-      
-      // 新規
-      currentExpenses.push(expense);
+      if (expenseId) {
+        // (v19 修正) 編集モード
+        expense.expenseId = expenseId; // IDを保持
+        var index = currentExpenses.findIndex(function(ex) { return ex.expenseId === expenseId; });
+        if (index > -1) {
+          currentExpenses[index] = expense; // 配列を上書き
+        } else {
+          // 念のため (IDがあるのに配列にない場合)
+          currentExpenses.push(expense);
+        }
+      } else {
+        // (v19 修正) 新規モード
+        expense.expenseId = 'temp_' + Date.now(); // 新規一時ID
+        currentExpenses.push(expense);
+      }
       
       // バッジ更新
       updateExpenseBadgeA(timeSlot);
       
       expenseModalInstance.hide();
     }
+    
+    /**
+     * (A) (v19 新規) 経費アイテムを削除
+     */
+    function deleteExpenseItemA() {
+      var expenseId = document.getElementById('M-expenseId').value;
+      var timeSlot = document.getElementById('M-timeSlot').value;
+      
+      if (!expenseId) {
+        showCustomAlert('削除対象の経費が見つかりません。');
+        return;
+      }
+      
+      showCustomAlert('この経費を削除します。よろしいですか？', function() {
+        // (v19) currentExpenses 配列から該当IDを削除
+        currentExpenses = currentExpenses.filter(function(ex) {
+          return ex.expenseId !== expenseId;
+        });
+        
+        // バッジ更新
+        updateExpenseBadgeA(timeSlot);
+        
+        expenseModalInstance.hide();
+      });
+    }
 
     /**
-     * (A) 指定された時間枠の経費バッジを更新
+     * (A) 指定された時間枠の経費バッジを更新 (v17 修正)
      * @param {string} timeSlot "07:00" など
      */
     function updateExpenseBadgeA(timeSlot) {
-      // 修正1: 経費の件数を取得するため .length を追加
+      // (v17 修正) GASからマッピングされた 'timeSlot' キーを見る
       var count = currentExpenses.filter(function(ex) {
         return ex.timeSlot === timeSlot;
       }).length; 
       
-      // 修正2: startTime -> timeSlot に修正
       var countEl = document.getElementById('expense-count-' + timeSlot);
       var badgeEl = document.getElementById('expense-badge-' + timeSlot);
       
       if (countEl && badgeEl) {
         countEl.textContent = count;
         if (count > 0) {
-          // badgeEl.classList.remove('bg-primary'); // (旧スタイル)
-          // badgeEl.classList.add('bg-danger'); // (旧スタイル)
-          badgeEl.classList.add('has-expense'); // (新スタイル)
+          badgeEl.classList.add('has-expense');
         } else {
-          // badgeEl.classList.remove('bg-danger'); // (旧スタイル)
-          // badgeEl.classList.add('bg-primary'); // (旧スタイル)
-          badgeEl.classList.remove('has-expense'); // (新スタイル)
+          badgeEl.classList.remove('has-expense');
         }
       }
     }
@@ -1082,14 +1341,78 @@
     }
 
     /**
-     * (A) 日報の保存または申請
+     * (A) (v16 新規) 活動データを連続圧縮する
+     * @param {object} activitiesObj {"07:00": {type: "移動", ...}, "07:30": {type: "移動", ...}, ...}
+     * @returns {Array} [{startTime, endTime, type, content}, ...]
+     */
+    function compressActivities_(activitiesObj) {
+      var compressed = [];
+      var currentBlock = null;
+
+      // TIME_SLOTS ("07:00" to "18:00") をループ
+      for (var i = 0; i < TIME_SLOTS.length - 1; i++) {
+        var startTime = TIME_SLOTS[i];
+        var endTime = TIME_SLOTS[i+1];
+        var act = activitiesObj[startTime]; // "07:00" の活動
+        
+        // 1. 活動が入力されていない場合
+        if (!act || !act.type) {
+          if (currentBlock) {
+            // 直前までのブロックを確定
+            compressed.push(currentBlock);
+            currentBlock = null;
+          }
+          continue;
+        }
+
+        // 2. 最初のブロックを開始
+        if (!currentBlock) {
+          currentBlock = {
+            startTime: startTime,
+            endTime: endTime,
+            type: act.type,
+            content: act.content || ''
+          };
+          continue;
+        }
+
+        // 3. 活動が連続しているかチェック (type と content が両方一致)
+        if (currentBlock.type === act.type && currentBlock.content === (act.content || '')) {
+          // 連続 -> 終了時刻を更新
+          currentBlock.endTime = endTime;
+        } else {
+          // 連続していない -> 既存ブロックを確定し、新ブロックを開始
+          compressed.push(currentBlock);
+          currentBlock = {
+            startTime: startTime,
+            endTime: endTime,
+            type: act.type,
+            content: act.content || ''
+          };
+        }
+      }
+      
+      // 最後のブロックが残っていれば確定
+      if (currentBlock) {
+        compressed.push(currentBlock);
+      }
+      
+      return compressed;
+    }
+
+    /**
+     * (A) 日報の保存または申請 (v18 修正: カスタムアラート)
      * @param {'一時保存' | '申請中'} status
      */
     function saveOrSubmitReportA(status) {
+      
+      // (v17 修正) 保存直前に走行距離の表示内容を更新する
+      calculateMileageA();
+      
       // バリデーション
       var reportDate = document.getElementById('A-date').value;
       if (!reportDate) {
-        alert('日付は必須です。');
+        showCustomAlert('日付は必須です。'); // (v18 修正)
         return;
       }
       
@@ -1098,72 +1421,64 @@
         return act.type;
       });
       if (filledActivities.length === 0) {
-        alert('活動内容が1件も入力されていません。');
+        showCustomAlert('活動内容が1件も入力されていません。'); // (v18 修正)
         return;
       }
       
-      if (status === '申請中' && !confirm('「' + status + '」で送信します。よろしいですか？\n※申請後は編集できなくなります。')) {
-        return;
+      // (v18 修正) 確認ダイアログをカスタムモーダルに変更
+      var confirmMessage = '「' + status + '」で送信します。よろしいですか？';
+      if (status === '申請中') {
+         confirmMessage += '\n※申請後は編集できなくなります。';
       }
       
-      showLoading(true, status + '処理を実行中...');
-      
-      // 走行距離
-      var mileage = parseFloat(document.getElementById('A-mileageDisplay').textContent) || 0;
-      
-      // 1. ヘッダーデータ
-      var headerData = {
-        reportId: document.getElementById('A-reportId').value,
-        date: reportDate,
-        remarks: document.getElementById('A-remarks').value,
-        startMeter: document.getElementById('A-startMeter').value,
-        endMeter: document.getElementById('A-endMeter').value,
-        mileage: mileage,
-        // privateKm: (v5: GAS側で保存しない仕様)
-        // totalMovementTime, totalMeetingTime (v5: GAS側で自動計算)
-      };
+      showCustomAlert(confirmMessage, function() {
+        // --- OKが押された場合の処理 ---
+        showLoading(true, status + '処理を実行中...');
+        
+        // 走行距離
+        var mileage = parseFloat(document.getElementById('A-mileageDisplay').textContent) || 0;
+        
+        // 1. ヘッダーデータ
+        var headerData = {
+          reportId: document.getElementById('A-reportId').value,
+          date: reportDate, // "yyyy-MM-dd"
+          remarks: document.getElementById('A-remarks').value,
+          startMeter: document.getElementById('A-startMeter').value,
+          endMeter: document.getElementById('A-endMeter').value,
+          mileage: mileage,
+        };
 
-      // 2. 行動明細データ (currentActivities を配列に変換)
-      // { "07:00": { type: "移動", content: "" } } -> [ { id: "07:00", startTime: "07:00", endTime: "07:30", type: "移動", content: "" } ]
-      var activityData = [];
-      TIME_SLOTS.forEach(function(startTime, index) {
-        if (index < TIME_SLOTS.length - 1 && currentActivities[startTime] && currentActivities[startTime].type) {
-          activityData.push({
-            id: startTime, // (v5: GAS側では使わないが一応)
-            startTime: startTime,
-            endTime: TIME_SLOTS[index + 1],
-            type: currentActivities[startTime].type,
-            content: currentActivities[startTime].content || ''
-          });
-        }
+        // 2. (v16 修正) 行動明細データを圧縮
+        var activityData = compressActivities_(currentActivities);
+        
+        // 3. 経費明細データ (currentExpenses はそのまま)
+        
+        var reportData = {
+          header: headerData,
+          activities: activityData, // 圧縮済み配列を渡す
+          expenses: currentExpenses
+        };
+        
+        // console.log("Submitting data:", reportData);
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showLoading(false);
+            // v11: 詳細エラー表示
+            if (result && result.status === 'success') {
+              showCustomAlert(result.message, function() { // (v18 修正)
+                // 成功したらフォームをリセットし、一覧に遷移
+                resetFormA();
+                showView('view-E-my-reports');
+              });
+            } else {
+              onApiError((result && result.message) || '保存処理に失敗しました。');
+            }
+          })
+          .withFailureHandler(onApiError)
+          .saveOrSubmitDailyReport(reportData, status);
+        // --- OKが押された場合の処理ここまで ---
       });
-      
-      // 3. 経費明細データ (currentExpenses はそのまま)
-      // (v5: timeSlot もGAS側に送る)
-      
-      var reportData = {
-        header: headerData,
-        activities: activityData,
-        expenses: currentExpenses
-      };
-      
-      // console.log("Submitting data:", reportData);
-
-      google.script.run
-        .withSuccessHandler(function(result) {
-          showLoading(false);
-          // v11: 詳細エラー表示
-          if (result && result.status === 'success') {
-            alert(result.message);
-            // 成功したらフォームをリセットし、一覧に遷移
-            resetFormA();
-            showView('view-E-my-reports');
-          } else {
-            onApiError((result && result.message) || '保存処理に失敗しました。');
-          }
-        })
-        .withFailureHandler(onApiError)
-        .saveOrSubmitDailyReport(reportData, status);
     }
 
 
@@ -1181,7 +1496,7 @@
     }
 
     /**
-     * (B) 承認待ち一覧 取得成功
+     * (B) 承認待ち一覧 取得成功 (v17 修正: 日付フォーマット)
      * @param {Array<object>} reports
      */
     function onLoadPendingReportsSuccessB(reports) {
@@ -1204,11 +1519,12 @@
       });
 
       reports.forEach(function(report) {
-        // v7: null check
+        // (v17 修正) GASが yyyy/MM/dd を返す
         var dateStr = report['日付'] || '日付不明';
         var formattedDate = '';
         try {
-           formattedDate = new Date(dateStr).toLocaleDateString('ja-JP', { weekday: 'short' });
+           // (v17 修正) 曜日だけ取得
+           formattedDate = new Date(dateStr.replace(/\//g, '-')).toLocaleDateString('ja-JP', { weekday: 'short' });
         } catch(e) {
            formattedDate = '日付不正';
         }
@@ -1223,7 +1539,7 @@
         
         item.innerHTML = 
           '<div>' +
-            '<h5 class="mb-1">' + dateStr + ' (' + formattedDate + ')</h5>' +
+            '<h5 class="mb-1">' + dateStr + ' (' + formattedDate + ')</h5>' + // (v17 修正)
             '<p class="mb-1">申請者: ' + (report['担当者'] || '不明') + '</p>' +
             '<small>合計経費: ' + formatNumber(report['合計経費'] || 0) + ' 円</small>' +
           '</div>' +
@@ -1250,7 +1566,7 @@
     }
     
     /**
-     * (C) 日報詳細 取得成功 (v11 修正: 堅牢化)
+     * (C) 日報詳細 取得成功 (v19 修正: 経費テーブル)
      * @param {object} data { header, activities, expenses }
      */
     function onLoadReportDetailsSuccessC(data) {
@@ -1269,9 +1585,10 @@
       var expenses = data.expenses;
       
       // 1. ヘッダー
-      document.getElementById('C-header-date').textContent = header['日付'] ? new Date(header['日付']).toLocaleDateString('ja-JP') : '日付なし';
+      // (v17 修正) GASが yyyy/MM/dd を返す
+      document.getElementById('C-header-date').textContent = header['日付'] ? formatDateWithDay(header['日付']) : '日付なし';
       document.getElementById('C-header-applicant').textContent = header['担当者'] || '不明';
-      document.getElementById('C-header-apply-date').textContent = header['申請日'] ? new Date(header['申請日']).toLocaleString('ja-JP') : 'N/A';
+      document.getElementById('C-header-apply-date').textContent = header['申請日'] || 'N/A'; // (v17 修正) yyyy/MM/dd HH:mm:ss
       document.getElementById('C-header-mileage').textContent = header['走行距離'] || 0;
       document.getElementById('C-header-total-expense').textContent = formatNumber(header['合計経費'] || 0);
       document.getElementById('C-header-remarks').textContent = header['備考'] || '(備考なし)';
@@ -1291,6 +1608,17 @@
         case '一時保存': statusBadge.classList.add('bg-warning', 'text-dark'); break;
         case '精算申請済': statusBadge.classList.add('bg-info', 'text-dark'); break;
         default: statusBadge.classList.add('bg-secondary');
+      }
+      
+      // (v18 新規) 差戻し理由の表示
+      var reasonWrapper = document.getElementById('C-rejection-reason-wrapper');
+      var reasonPre = document.getElementById('C-rejection-reason');
+      if (header['差戻し理由']) {
+        reasonPre.textContent = header['差戻し理由'];
+        reasonWrapper.style.display = 'block';
+      } else {
+        reasonPre.textContent = '';
+        reasonWrapper.style.display = 'none';
       }
       
       // 2. 行動明細
@@ -1318,21 +1646,24 @@
       expBody.innerHTML = '';
       if (expenses && expenses.length > 0) { // v7: null check
         expenses.forEach(function(ex) {
-          var useDate = ex['利用日'] ? new Date(ex['利用日']).toLocaleDateString('ja-JP') : 'N/A';
-          var url = ex['領収書URL'];
+          // (v17 修正) GASが yyyy/MM/dd を返す
+          var useDate = ex.useDate || 'N/A'; // (v17) マッピングされたキー
+          var url = ex.receiptUrl; // (v17) マッピングされたキー
           var urlLink = url ? '<a href="' + url + '" target="_blank" rel="noopener noreferrer"><i class="bi bi-box-arrow-up-right"></i></a>' : '';
           
+          // (v19 修正) 経費テーブルに「時間帯」列を追加
           expBody.innerHTML += 
             '<tr>' +
+              '<td>' + (ex.timeSlot || 'N/A') + '</td>' + // (v19 追加)
               '<td>' + useDate + '</td>' +
               '<td>' + (ex.itemName || '不明な項目') + '</td>' +
-              '<td>' + formatNumber(ex['金額'] || 0) + '</td>' +
-              '<td>' + (ex['備考'] || '') + '</td>' +
+              '<td>' + formatNumber(ex.amount || 0) + '</td>' + // (v17) マッピングされたキー
+              '<td>' + (ex.remarks || '') + '</td>' + // (v17) マッピングされたキー
               '<td>' + urlLink + '</td>' +
             '</tr>';
         });
       } else {
-        expBody.innerHTML = '<tr><td colspan="5">経費明細はありません。</td></tr>';
+        expBody.innerHTML = '<tr><td colspan="6">経費明細はありません。</td></tr>'; // (v19 修正) colspan="5" -> 6
       }
       
       // 4. 承認ボタンの制御
@@ -1351,43 +1682,56 @@
     }
 
     /**
-     * (C) 承認処理
+     * (C) 承認処理 (v18 修正: カスタムアラート)
      */
     function handleApproveC() {
       var reportId = document.getElementById('C-reportId').value;
-      if (!reportId || !confirm('この日報を「承認」します。よろしいですか？')) {
-        return;
-      }
-      showLoading(true, '承認処理中...');
-      google.script.run
-        .withSuccessHandler(function(result) {
-          showLoading(false);
-          alert(result.message);
-          // 承認待ち一覧 (B) に戻る
-          showView('view-B-approval-list');
-        })
-        .withFailureHandler(onApiError)
-        .approveReport(reportId);
+      if (!reportId) return;
+      
+      showCustomAlert('この日報を「承認」します。よろしいですか？', function() { // (v18 修正)
+        // OK後の処理
+        showLoading(true, '承認処理中...');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showLoading(false);
+            showCustomAlert(result.message, function() { // (v18 修正)
+              // 承認待ち一覧 (B) に戻る
+              showView('view-B-approval-list');
+            });
+          })
+          .withFailureHandler(onApiError)
+          .approveReport(reportId);
+      });
     }
     
     /**
-     * (C) 差戻し処理
+     * (C) 差戻し処理 (v18 修正: カスタムプロンプト)
      */
     function handleRejectC() {
       var reportId = document.getElementById('C-reportId').value;
-      if (!reportId || !confirm('この日報を「差戻し」します。よろしいですか？')) {
-        return;
-      }
-      showLoading(true, '差戻し処理中...');
-      google.script.run
-        .withSuccessHandler(function(result) {
-          showLoading(false);
-          alert(result.message);
-          // 承認待ち一覧 (B) に戻る
-          showView('view-B-approval-list');
-        })
-        .withFailureHandler(onApiError)
-        .rejectReport(reportId);
+      if (!reportId) return;
+      
+      // (v18 修正) カスタムプロンプトを使用
+      showCustomPrompt('差戻し理由を入力してください（必須）:', function(reason) {
+        if (!reason) {
+          // showCustomAlert("差戻し理由が入力されていないため、処理を中断しました。");
+          // (v18) キャンセルの場合はアラート不要
+          return;
+        }
+        
+        // 理由が入力された場合
+        showLoading(true, '差戻し処理中...');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showLoading(false);
+            showCustomAlert(result.message, function() { // (v18 修正)
+              // 承認待ち一覧 (B) に戻る
+              showView('view-B-approval-list');
+            });
+          })
+          .withFailureHandler(onApiError)
+          .rejectReport(reportId, reason); // (v15 修正) 理由を渡す
+      });
     }
 
     // --- (D) 経費精算まとめ機能 ----------------------------------------
@@ -1404,7 +1748,7 @@
     }
     
     /**
-     * (D) 承認済み経費 取得成功 (v5 修正)
+     * (D) 承認済み経費 取得成功 (v17 修正: 日付フォーマット)
      * @param {object} data { reports: [], expenses: [] }
      */
     function onLoadApprovedExpensesSuccessD(data) {
@@ -1440,7 +1784,7 @@
         var tr = document.createElement('tr');
         var reportId = report['日報ID'];
         var totalExpense = parseFloat(report['合計経費']) || 0;
-        var date = new Date(report['日付']).toLocaleDateString('ja-JP');
+        var date = report['日付']; // (v17 修正) GASが yyyy/MM/dd を返す
         
         // 経費詳細の文字列
         var expenseDetails = (expensesMap[reportId] || []).join('<br>');
@@ -1484,7 +1828,7 @@
     }
     
     /**
-     * (D) 最終精算申請を送信
+     * (D) 最終精算申請を送信 (v18 修正: カスタムアラート)
      */
     function submitFinalExpensesD() {
       var selectedIds = [];
@@ -1493,24 +1837,25 @@
       });
       
       if (selectedIds.length === 0) {
-        alert('精算申請する日報を選択してください。');
+        showCustomAlert('精算申請する日報を選択してください。'); // (v18 修正)
         return;
       }
       
-      if (!confirm('選択した ' + selectedIds.length + ' 件の日報を経理に精算申請します。\nよろしいですか？')) {
-        return;
-      }
-      
-      showLoading(true, '精算申請を送信中...');
-      google.script.run
-        .withSuccessHandler(function(result) {
-          showLoading(false);
-          alert(result.message);
-          // 成功したら一覧をリロード
-          loadApprovedExpensesD();
-        })
-        .withFailureHandler(onApiError)
-        .submitFinalExpenses(selectedIds);
+      var confirmMessage = '選択した ' + selectedIds.length + ' 件の日報を経理に精算申請します。\nよろしいですか？';
+      showCustomAlert(confirmMessage, function() { // (v18 修正)
+        // OK後の処理
+        showLoading(true, '精算申請を送信中...');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showLoading(false);
+            showCustomAlert(result.message, function() { // (v18 修正)
+              // 成功したら一覧をリロード
+              loadApprovedExpensesD();
+            });
+          })
+          .withFailureHandler(onApiError)
+          .submitFinalExpenses(selectedIds);
+      });
     }
 
     // --- (E) 日報一覧機能 ----------------------------------------------
@@ -1527,7 +1872,7 @@
     }
 
     /**
-     * (E) 日報一覧 取得成功
+     * (E) 日報一覧 取得成功 (v17 修正: 日付フォーマット)
      * @param {Array<object>} reports
      */
     function onLoadMyReportsSuccessE(reports) {
@@ -1566,7 +1911,7 @@
         }
         
         tr.innerHTML = 
-          '<td>' + (report['日付'] || '') + '</td>' + // v5
+          '<td>' + (report['日付'] || '') + '</td>' + // (v17 修正) GASが yyyy/MM/dd を返す
           '<td>' + statusBadge + '</td>' +
           '<td>' + formatNumber(report['合計経費']) + '</td>' + // v5
           '<td><small>' + (report['備考'] || '') + '</small></td>' + // v5
@@ -1584,23 +1929,21 @@
     }
     
     /**
-     * (E) 編集ボタンクリック時の処理
-     * @param {string} reportId
+     * (E) 編集ボタンクリック時の処理 (v18 修正: カスタムアラート)
      */
     function handleEditReportE(reportId) {
-      if (!confirm('この日報データを編集します。入力中の内容は破棄されますが、よろしいですか？')) {
-        return;
-      }
-      
-      showLoading(true, '編集データを読み込み中...');
-      google.script.run
-        .withSuccessHandler(onLoadReportForEditSuccessA)
-        .withFailureHandler(onApiError)
-        .getReportDataForEdit(reportId);
+      showCustomAlert('この日報データを編集します。入力中の内容は破棄されますが、よろしいですか？', function() { // (v18 修正)
+        // OK後の処理
+        showLoading(true, '編集データを読み込み中...');
+        google.script.run
+          .withSuccessHandler(onLoadReportForEditSuccessA)
+          .withFailureHandler(onApiError)
+          .getReportDataForEdit(reportId);
+      });
     }
     
     /**
-     * (A) 編集データの読み込み成功 (E -> A) (v14 修正: データセットの順序変更)
+     * (A) 編集データの読み込み成功 (E -> A) (v18 修正: 経費バッジ更新)
      * @param {object} result { status, data, message }
      */
     function onLoadReportForEditSuccessA(result) {
@@ -1616,28 +1959,41 @@
         var data = result.data;
         var h = data.header;
         
-        // 1. フォーム(A)をリセット
+        // 1. フォーム(A)をリセット (v18: この中で経費バッジがクリアされる)
         resetFormA();
         
-        // 2. (v14 修正) データを先にグローバル変数にセット
+        // 2. (v16 修正) 展開済みの activities オブジェクトをセット
         currentActivities = data.activities || {};
-        currentExpenses = data.expenses || [];
+        currentExpenses = data.expenses || []; // (v17) キーマッピング済みのデータ
 
-        // 3. (v14 修正) タイムシートを描画 (ここで activities と expenses が使われる)
+        // 3. (v14 修正) タイムシートを描画 (v18: バッジ更新はしない)
         renderTimesheetA();
+        
+        // (v18 修正) currentExpenses をセットした *後* でバッジを更新
+        updateAllExpenseBadgesA();
         
         // 4. (v14 修正) 最後にヘッダー情報をフォームにセット
         document.getElementById('A-reportId').value = h['日報ID'] || '';
-        document.getElementById('A-date').value = h['日付'] || getTodayString();
+        // (v17 修正) GASが yyyy/MM/dd を返すため、input[type=date]用に yyyy-MM-dd に変換
+        document.getElementById('A-date').value = h['日付'] ? h['日付'].replace(/\//g, '-') : getTodayString();
         document.getElementById('A-remarks').value = h['備考'] || '';
         document.getElementById('A-startMeter').value = h['始時メーター'] || '';
         document.getElementById('A-endMeter').value = h['終時メーター'] || '';
         
+        // (v15 修正) 差戻し理由を表示
+        var reasonDiv = document.getElementById('A-rejection-reason');
+        if (h['差戻し理由']) { // v15: 「差戻し理由」列がスプレッドシートにあれば
+          reasonDiv.textContent = '差戻し理由: ' + h['差戻し理由'];
+          reasonDiv.style.display = 'block';
+        } else {
+          reasonDiv.style.display = 'none';
+        }
+        
         // 走行距離を再計算
         calculateMileageA();
         
-        // 5. (v14 修正) 経費バッジは renderTimesheetA の最後で呼ばれるので不要
-        // updateAllExpenseBadgesA(); 
+        // (v15 修正) 時間合計を再計算
+        calculateTotalsA();
 
         // 6. (A)画面に遷移
         showView('view-A-daily-report');
@@ -1646,7 +2002,7 @@
         // 失敗
         var errorMsg = (result && result.message) ? result.message : '編集データの読み込みに失敗しました。(status: ' + (result.status || 'unknown') + ')';
         console.error('onLoadReportForEditSuccessA: Failed to load data.', result);
-        onApiError(errorMsg);
+        onApiError(errorMsg); // (v18 修正)
       }
     }
 
