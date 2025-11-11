@@ -131,6 +131,11 @@
       border-color: #ffc107;
     }
     
+    /* (v24 新規) カンマ入力用。実際の number input を隠す */
+    .hidden-number-input {
+      display: none;
+    }
+    
   </style>
 </head>
 <body>
@@ -387,6 +392,9 @@
                 <th>金額 (円)</th>
                 <!-- (v20 修正) エリア列を追加 -->
                 <th>エリア</th>
+                <!-- (v22 新規) 税関連の列を追加 -->
+                <th>税抜金額 (円)</th>
+                <th>税率</th>
                 <th>備考</th>
                 <th>領収書</th>
               </tr>
@@ -502,7 +510,7 @@
   </div>
 
 
-  <!-- (A) 経費登録モーダル -->
+  <!-- (A) 経費登録モーダル (v22: 税計算、OCR廃止) (v24: カンマ入力対応) -->
   <div class="modal fade" id="expenseModal" tabindex="-1" aria-labelledby="expenseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
@@ -518,11 +526,13 @@
             <input type="hidden" id="M-timeSlot">
             
             <div class="row g-3">
-              <div class="col-md-6">
+              <!-- (v23 修正) col-md-6 -> col-12 -->
+              <div class="col-12">
                 <label for="M-useDate" class="form-label">利用日 <span class="text-danger">*</span></label>
                 <input type="date" class="form-control" id="M-useDate" required>
               </div>
-              <div class="col-md-6">
+              <!-- (v23 修正) col-md-6 -> col-12 -->
+              <div class="col-12">
                 <label for="M-itemCode" class="form-label">経費項目 <span class="text-danger">*</span></label>
                 <select class="form-select" id="M-itemCode" required>
                   <option value="">選択してください</option>
@@ -530,8 +540,8 @@
                 </select>
               </div>
 
-              <!-- (v20 新規) エリア選択 -->
-              <div class="col-md-6" id="M-area-wrapper" style="display: none;">
+              <!-- (v20 新規) エリア選択 (v23 修正) col-md-6 -> col-12 -->
+              <div class="col-12" id="M-area-wrapper" style="display: none;">
                 <label for="M-areaCode" class="form-label">エリア <span class="text-danger">*</span></label>
                 <select class="form-select" id="M-areaCode">
                   <option value="">エリアを選択</option>
@@ -539,11 +549,44 @@
                 </select>
               </div>
 
-              <div class="col-md-6">
+              <!-- (v22 修正) 金額 (税込) (v23 修正) col-md-6 -> col-12 -->
+              <div class="col-12">
                 <label for="M-amount" class="form-label">金額 (円) <span class="text-danger">*</span></label>
-                <input type="number" class="form-control" id="M-amount" required>
-                <!-- (v20 新規) 上限表示用 -->
-                <div id="M-amount-limit-note" class="form-text"></div>
+                <!-- (v24 変更) 実際の入力欄 (カンマ表示用) -->
+                <input type="tel" class="form-control" id="M-amount-display-input" placeholder="税込金額" inputmode="numeric">
+                <!-- (v24 変更) データを保持する number input (隠す) -->
+                <input type="number" class="hidden-number-input" id="M-amount" required>
+                <!-- (v20) 上限表示用 (v23: 削除) -->
+                <!-- (v22) カンマ区切り表示用 (v23: 削除 -> v24: input 自体にカンマを振るため不要) -->
+                <!-- <div id="M-amount-display" class="form-text text-muted"></div> -->
+              </div>
+              
+              <!-- (v22 新規) 消費税率 (v23 修正) col-md-6 -> col-12 / 順序変更 -->
+              <div class="col-12">
+                <label for="M-tax-rate-select" class="form-label">消費税率</label>
+                <div class="input-group">
+                  <select class="form-select" id="M-tax-rate-select">
+                    <option value="auto">---</option>
+                    <option value="10">10%</option>
+                    <option value="8">8%</option>
+                    <option value="5">5%</option>
+                    <option value="3">3%</option>
+                    <option value="0">消費税なし</option>
+                    <option value="custom">その他 (手入力)</option>
+                  </select>
+                  <input type="number" class="form-control" id="M-tax-rate-custom" placeholder="例: 10" style="display: none;" min="0">
+                </div>
+              </div>
+
+              <!-- (v22 新規) 税抜金額 (v23 修正) col-md-6 -> col-12 / 順序変更 -->
+              <div class="col-12">
+                <label for="M-amount-excluding-tax" class="form-label">税抜金額 (円)</label>
+                <!-- (v24 変更) 実際の入力欄 (カンマ表示用) -->
+                <input type="tel" class="form-control" id="M-amount-excluding-tax-display-input" placeholder="税抜金額" inputmode="numeric">
+                <!-- (v24 変更) データを保持する number input (隠す) -->
+                <input type="number" class="hidden-number-input" id="M-amount-excluding-tax">
+                <!-- (v22) カンマ区切り表示用 (v23: 削除 -> v24: input 自体にカンマを振るため不要) -->
+                <!-- <div id="M-amount-excluding-tax-display" class="form-text text-muted"></div> -->
               </div>
               
               <div class="col-12">
@@ -553,15 +596,23 @@
               
               <hr class="my-2">
               
+              <!-- (v22 修正) AI-OCR 関連を削除 -->
               <div class="col-12">
-                <label for="M-receiptImage" class="form-label">領収書アップロード (AI-OCR)</label>
+                <label for="M-receiptImage" class="form-label">領収書アップロード</label>
+                <!-- (v22) "accept" を "image/*" に -->
+                <!-- (v24 変更) "capture" 属性を削除 (カメラ + フォルダ選択) -->
                 <input class="form-control" type="file" id="M-receiptImage" accept="image/*">
-                <div class="form-text">画像ファイル(JPG, PNG等)を選択すると、AIが利用日・金額・備考を自動入力します。</div>
-                <div id="M-ocr-status" class="mt-2"></div>
+                <!-- (v24 削除) （スマホの場合、カメラが起動します）のテキストを削除 -->
+                <!-- <div class="form-text">（スマホの場合、カメラが起動します）</div> -->
               </div>
+              
+              <!-- (v22 削除) M-ocr-status は削除 -->
+              <!-- <div id="M-ocr-status" class="mt-2"></div> -->
+              
               <div class="col-12">
                 <label for="M-receiptUrl" class="form-label">領収書URL</label>
-                <input type="text" class="form-control" id="M-receiptUrl" readonly>
+                <!-- (v22 変更) readonly を維持し、placeholder を追加 -->
+                <input type="text" class="form-control" id="M-receiptUrl" readonly placeholder="アップロードするとここにURLが表示されます">
               </div>
             </div>
           </form>
@@ -622,7 +673,7 @@
   <!-- Bootstrap 5 JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-  <!-- クライアントサイド JavaScript (ES5準拠) -->
+  <!-- クライアントサイド JavaScript (ES5準拠) (v22: 税計算、OCR廃止) (v24: カンマ入力対応) -->
   <script>
     // --- グローバル変数 -------------------------------------------------
     
@@ -698,7 +749,7 @@
       // (A) メーター自動計算のイベントリスナー設定
       setupMileageCalculatorA();
 
-      // (A) 領収書アップロード(OCR)のイベントリスナー設定
+      // (A) 領収書アップロードのイベントリスナー設定 (v22: AI-OCR廃止)
       document.getElementById('M-receiptImage').addEventListener('change', handleImageUploadA);
       
       // (v20 新規) 経費モーダルのロジック用イベントリスナー
@@ -706,6 +757,16 @@
       document.getElementById('M-areaCode').addEventListener('change', onAreaCodeChangeA);
       document.getElementById('M-amount').addEventListener('input', checkExpenseLimitA);
       
+      // (v22 新規) 税計算用のイベントリスナー
+      // (v24 変更) 実際のデータinput ('M-amount') をトリガーにする
+      document.getElementById('M-amount').addEventListener('input', handleTaxCalculationA);
+      document.getElementById('M-amount-excluding-tax').addEventListener('input', handleTaxCalculationA);
+      document.getElementById('M-tax-rate-select').addEventListener('change', handleTaxCalculationA);
+      document.getElementById('M-tax-rate-custom').addEventListener('input', handleTaxCalculationA);
+
+      // (v24 新規) カンマ入力のイベントリスナー設定
+      initializeKanmaInputsA();
+
       // (C) 詳細画面の戻るボタン
       document.getElementById('C-back-button').addEventListener('click', function() {
         showView(viewC_ReturnView);
@@ -1167,7 +1228,7 @@
 
 
     /**
-     * (A) 経費モーダルを開く (v20 修正: 編集ロジック・規定ロジック)
+     * (A) 経費モーダルを開く (v20 修正: 編集ロジック・規定ロジック) (v22: 税項目) (v24: カンマ入力)
      * @param {string} timeSlot "07:00" など
      */
     function openExpenseModalA(timeSlot) {
@@ -1176,17 +1237,25 @@
       document.getElementById('M-expenseId').value = '';
       document.getElementById('M-timeSlot').value = timeSlot; // 紐づく時間をセット
       
-      // OCRステータスをリセット
-      document.getElementById('M-ocr-status').innerHTML = '';
+      // (v22 修正) OCRステータス -> URL欄
       document.getElementById('M-receiptUrl').value = '';
+      document.getElementById('M-receiptUrl').placeholder = 'アップロードするとここにURLが表示されます';
       
       // (v20) 規定ロジック・UIをリセット
       document.getElementById('M-area-wrapper').style.display = 'none';
       document.getElementById('M-areaCode').required = false;
       document.getElementById('M-areaCode').value = '';
-      document.getElementById('M-amount-limit-note').textContent = '';
+      // (v23: 削除) document.getElementById('M-amount-limit-note').textContent = '';
       currentExpenseLimit = null;
       checkExpenseLimitA(); // 背景色をリセット
+      
+      // (v22 新規) 税・カンマ表示をリセット
+      // (v23: 削除) updateAmountDisplayA('M-amount');
+      // (v24 変更) カンマ入力欄をリセット
+      updateKanmaInputA('M-amount', '');
+      updateKanmaInputA('M-amount-excluding-tax', '');
+      document.getElementById('M-tax-rate-select').value = 'auto';
+      toggleCustomTaxRateA(); // 手入力欄を非表示
       
       // (v19 修正) 削除ボタン
       var deleteButton = document.getElementById('M-delete-expense');
@@ -1208,15 +1277,25 @@
         document.getElementById('M-receiptUrl').value = expenseToEdit.receiptUrl;
         document.getElementById('M-areaCode').value = expenseToEdit.areaCode || ''; // (v20)
         
+        // (v22 新規) 税項目を復元
+        document.getElementById('M-tax-rate-select').value = expenseToEdit.taxRate || 'auto';
+        document.getElementById('M-tax-rate-custom').value = expenseToEdit.taxRateCustom || '';
+
         deleteButton.style.display = 'inline-block'; // 削除ボタン表示
         
         // (v20) 編集読み込み時のロジック実行
         // 1. 項目変更イベントを強制発火 (エリア表示/非表示、上限額セット)
         onItemCodeChangeA(); 
         // 2. 金額を上書き (onItemCodeChangeA が初期値をセットするため)
-        document.getElementById('M-amount').value = expenseToEdit.amount;
+        // (v24 変更) カンマ入力更新用の関数を使用
+        updateKanmaInputA('M-amount', expenseToEdit.amount);
         // 3. 上限チェックを強制発火 (読み込んだ金額で背景色を判定)
         checkExpenseLimitA();
+        
+        // (v22 新規) 読み込み後に税計算・カンマ表示を強制実行
+        // (v24 変更) カンマ入力更新用の関数を使用
+        updateKanmaInputA('M-amount-excluding-tax', expenseToEdit.taxExcludedAmount);
+        handleTaxCalculationA({ target: { id: 'M-amount' } });
 
       } else {
         // 経費がない場合 (新規モード)
@@ -1237,12 +1316,11 @@
     }
 
     /**
-     * (A) 経費モーダル非表示時の処理 (v20 修正)
+     * (A) 経費モーダル非表示時の処理 (v20, v22, v24 修正)
      */
     function onExpenseModalHideA() {
-      // フォームとOCRステータスをクリア
+      // フォームとファイルインプットをクリア
       document.getElementById('expense-form').reset();
-      document.getElementById('M-ocr-status').innerHTML = '';
       document.getElementById('M-receiptImage').value = ''; // fileインプットもクリア
       document.getElementById('M-delete-expense').style.display = 'none'; // (v19)
       
@@ -1250,13 +1328,23 @@
       document.getElementById('M-area-wrapper').style.display = 'none';
       document.getElementById('M-areaCode').required = false;
       document.getElementById('M-areaCode').value = '';
-      document.getElementById('M-amount-limit-note').textContent = '';
+      // (v23: 削除) document.getElementById('M-amount-limit-note').textContent = '';
       currentExpenseLimit = null;
       checkExpenseLimitA(); // 背景色をリセット
+      
+      // (v22 新規) カンマ区切り表示をリセット
+      // (v23: 削除) 
+      // (v24 変更) カンマ入力欄をリセット
+      updateKanmaInputA('M-amount', '');
+      updateKanmaInputA('M-amount-excluding-tax', '');
+      
+      // (v22 新規) 税率フォームをリセット (reset()だけでは 'auto' にならないため)
+      document.getElementById('M-tax-rate-select').value = 'auto';
+      toggleCustomTaxRateA(); // 手入力欄を非表示
     }
 
     /**
-     * (A) 領収書画像アップロード処理 (AI-OCR)
+     * (A) (v22 変更) 領収書画像アップロード処理 (AI-OCR廃止版)
      */
     function handleImageUploadA(event) {
       var file = event.target.files[0];
@@ -1267,15 +1355,16 @@
       reader.onload = function() {
         var base64Image = reader.result;
         
-        var statusEl = document.getElementById('M-ocr-status');
-        statusEl.innerHTML = '<span class="text-primary"><div class="spinner-border spinner-border-sm" role="status"></div> AI-OCRで解析中です...</span>';
+        // (v22 変更) OCRステータス -> URL欄
+        var statusEl = document.getElementById('M-receiptUrl');
+        statusEl.value = 'アップロード中です...';
         
-        showLoading(true, 'AI-OCRで解析中...');
+        showLoading(true, '領収書をアップロード中...');
         
         google.script.run
-          .withSuccessHandler(onOcrSuccessA)
+          .withSuccessHandler(onReceiptUploadSuccessA) // (v22) 成功ハンドラをリネーム
           .withFailureHandler(onApiError)
-          .processImageOCR(base64Image);
+          .uploadReceiptImage(base64Image); // (v22) AI-OCRではなく、画像保存関数を呼ぶ
       };
       reader.onerror = function(error) {
         console.error("File reading error: ", error);
@@ -1284,37 +1373,23 @@
     }
 
     /**
-     * (A) AI-OCR成功時のコールバック (v18 修正: カスタムアラート)
-     * @param {object} result { success: true, receiptUrl, ocrData: { date, amount, remarks } }
+     * (A) (v22 変更) AI-OCR成功時のコールバックをリネーム (onOcrSuccessA -> onReceiptUploadSuccessA)
+     * @param {object} result { status: "success", url: "..." }
      */
-    function onOcrSuccessA(result) {
+    function onReceiptUploadSuccessA(result) {
       showLoading(false);
       
-      if (result.success && result.ocrData) {
-        var receiptUrl = result.receiptUrl;
-        var ocrData = result.ocrData;
+      // (v22) result は { status: "success", url: "..." } または { status: "error", ... }
+      if (result && result.status === 'success' && result.url) {
         
-        document.getElementById('M-ocr-status').innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill"></i> OCR解析が完了しました。</span>';
+        // (v22 変更) フォームに自動入力 (URLのみ)
+        document.getElementById('M-receiptUrl').value = result.url;
         
-        // フォームに自動入力
-        if (ocrData.date) {
-          document.getElementById('M-useDate').value = ocrData.date;
-        }
-        if (ocrData.amount) {
-          document.getElementById('M-amount').value = ocrData.amount;
-        }
-        if (ocrData.remarks) {
-          document.getElementById('M-remarks').value = ocrData.remarks;
-        }
-        
-        document.getElementById('M-receiptUrl').value = receiptUrl;
-        
-        // (v20) OCRで金額が入ったら、上限チェックを実行
-        checkExpenseLimitA();
+        // (v22 削除) OCRによる自動入力ロジックはすべて削除
         
       } else {
-        onApiError('OCR解析に失敗しました。'); // (v18 修正)
-        document.getElementById('M-ocr-status').innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> OCR解析に失敗しました。</span>';
+        onApiError((result && result.message) || '領収書のアップロードに失敗しました。'); // (v18 修正)
+        document.getElementById('M-receiptUrl').value = 'アップロード失敗';
       }
     }
 
@@ -1378,17 +1453,17 @@
     }
     
     /**
-     * (A) (v20 新規) 経費項目(select)の変更イベントハンドラ
+     * (A) (v20 新規) 経費項目(select)の変更イベントハンドラ (v24: カンマ入力対応)
      */
     function onItemCodeChangeA() {
       var itemCode = document.getElementById('M-itemCode').value;
       var areaWrapper = document.getElementById('M-area-wrapper');
       var areaSelect = document.getElementById('M-areaCode');
-      var amountInput = document.getElementById('M-amount');
-      var amountNote = document.getElementById('M-amount-limit-note');
+      var amountInput = document.getElementById('M-amount'); // (v24) 隠された number input
+      // (v23: 削除) var amountNote = document.getElementById('M-amount-limit-note');
       
       // リセット
-      amountNote.textContent = '';
+      // (v23: 削除) amountNote.textContent = '';
       currentExpenseLimit = null;
       
       if (itemCode === '101') { // 日当
@@ -1398,10 +1473,12 @@
         
         var limit = getExpenseLimitA(itemCode);
         if (limit !== null) {
-          amountInput.value = limit; // 初期値としてセット
-          amountNote.textContent = '規定額: ' + formatNumber(limit) + '円';
+          // (v24 変更) カンマ入力更新用の関数を使用
+          updateKanmaInputA('M-amount', limit); // 初期値としてセット
+          // (v23: 削除) amountNote.textContent = '規定額: ' + formatNumber(limit) + '円';
         } else {
-          amountInput.value = ''; // 規定が見つからない
+          // (v24 変更) カンマ入力更新用の関数を使用
+          updateKanmaInputA('M-amount', ''); // 規定が見つからない
         }
         
       } else if (itemCode === '102') { // 宿泊費
@@ -1413,25 +1490,31 @@
         var limit = getExpenseLimitA(itemCode, currentAreaCode);
         
         if (limit !== null) {
-          amountInput.value = limit; // 初期値としてセット
-          amountNote.textContent = '上限額: ' + formatNumber(limit) + '円';
+          // (v24 変更) カンマ入力更新用の関数を使用
+          updateKanmaInputA('M-amount', limit); // 初期値としてセット
+          // (v23: 削除) amountNote.textContent = '上限額: ' + formatNumber(limit) + '円';
         } else {
-          amountInput.value = ''; // 規定が見つからない
+          // (v24 変更) カンマ入力更新用の関数を使用
+          updateKanmaInputA('M-amount', ''); // 規定が見つからない
         }
         
       } else { // その他の項目
         areaWrapper.style.display = 'none';
         areaSelect.required = false;
         areaSelect.value = '';
-        amountInput.value = ''; // 金額をクリア (初期値は設定しない)
+        // (v24 変更) カンマ入力更新用の関数を使用
+        updateKanmaInputA('M-amount', ''); // 金額をクリア (初期値は設定しない)
       }
+      
+      // (v22 新規) 規定額がセットされた場合、税計算とカンマ表示をトリガー
+      handleTaxCalculationA({ target: { id: 'M-amount' } });
       
       // 最後に、セットされた金額で上限チェック（背景色リセット）
       checkExpenseLimitA();
     }
     
     /**
-     * (A) (v20 新規) エリア(select)の変更イベントハンドラ (宿泊費)
+     * (A) (v20 新規) エリア(select)の変更イベントハンドラ (宿泊費) (v24: カンマ入力対応)
      */
     function onAreaCodeChangeA() {
       var itemCode = document.getElementById('M-itemCode').value;
@@ -1442,41 +1525,51 @@
         var limit = getExpenseLimitA(itemCode, areaCode);
         
         if (limit !== null) {
-          document.getElementById('M-amount').value = limit; // 初期値としてセット
-          document.getElementById('M-amount-limit-note').textContent = '上限額: ' + formatNumber(limit) + '円';
+          // (v24 変更) カンマ入力更新用の関数を使用
+          updateKanmaInputA('M-amount', limit); // 初期値としてセット
+          // (v23: 削除) document.getElementById('M-amount-limit-note').textContent = '上限額: ' + formatNumber(limit) + '円';
         } else {
-          document.getElementById('M-amount').value = '';
-          document.getElementById('M-amount-limit-note').textContent = '規定が見つかりません。';
+          // (v24 変更) カンマ入力更新用の関数を使用
+          updateKanmaInputA('M-amount', '');
+          // (v23: 削除) document.getElementById('M-amount-limit-note').textContent = '規定が見つかりません。';
         }
+        
+        // (v22 新規) 規定額がセットされた場合、税計算とカンマ表示をトリガー
+        handleTaxCalculationA({ target: { id: 'M-amount' } });
         
         checkExpenseLimitA();
       }
     }
     
     /**
-     * (A) (v20 新規) 金額入力の上限チェック
+     * (A) (v20 新規) 金額入力の上限チェック (v24: カンマ入力対応)
      */
     function checkExpenseLimitA() {
-      var amountInput = document.getElementById('M-amount');
+      var amountInput = document.getElementById('M-amount'); // (v24) 隠された number input
       
       // currentExpenseLimit は getExpenseLimitA または onItemCodeChangeA でセットされる
       if (currentExpenseLimit !== null) {
         var currentAmount = parseFloat(amountInput.value) || 0;
         
+        // (v24 変更) 表示用の input (M-amount-display-input) のスタイルを変更
+        var displayInput = document.getElementById('M-amount-display-input');
+        
         if (currentAmount > currentExpenseLimit) {
-          amountInput.classList.add('amount-over-limit'); // 黄色
+          if (displayInput) displayInput.classList.add('amount-over-limit'); // 黄色
         } else {
-          amountInput.classList.remove('amount-over-limit'); // 白
+          if (displayInput) displayInput.classList.remove('amount-over-limit'); // 白
         }
       } else {
         // 規定がない項目はチェックしない
-        amountInput.classList.remove('amount-over-limit'); // 白
+        // (v24 変更) 表示用の input (M-amount-display-input) のスタイルをリセット
+        var displayInput = document.getElementById('M-amount-display-input');
+        if (displayInput) displayInput.classList.remove('amount-over-limit'); // 白
       }
     }
 
 
     /**
-     * (A) モーダルから経費アイテムを currentExpenses に追加 (v20 修正: areaCode)
+     * (A) モーダルから経費アイテムを currentExpenses に追加 (v20, v22, v24 修正)
      */
     function addExpenseItemA() {
       // バリデーション
@@ -1497,10 +1590,15 @@
         timeSlot: timeSlot,
         useDate: document.getElementById('M-useDate').value,
         itemCode: document.getElementById('M-itemCode').value,
-        amount: parseFloat(document.getElementById('M-amount').value) || 0,
+        amount: parseFloat(document.getElementById('M-amount').value) || 0, // 税込 (v24: 隠された input から)
         remarks: document.getElementById('M-remarks').value,
         receiptUrl: document.getElementById('M-receiptUrl').value,
-        areaCode: document.getElementById('M-areaCode').value || '' // v20: 追加
+        areaCode: document.getElementById('M-areaCode').value || '', // v20: 追加
+        
+        // (v22 新規) 税関連のデータを追加
+        taxExcludedAmount: parseFloat(document.getElementById('M-amount-excluding-tax').value) || 0, // (v24: 隠された input から)
+        taxRate: document.getElementById('M-tax-rate-select').value, // '10', '8', 'custom' など
+        taxRateCustom: parseFloat(document.getElementById('M-tax-rate-custom').value) || null // 手入力された数値
       };
       
       if (expenseId) {
@@ -1643,7 +1741,7 @@
     }
 
     /**
-     * (A) 日報の保存または申請 (v18 修正: カスタムアラート)
+     * (A) 日報の保存または申請 (v18 修正: カスタムアラート) (v22: 経費データ)
      * @param {'一時保存' | '申請中'} status
      */
     function saveOrSubmitReportA(status) {
@@ -1694,11 +1792,12 @@
         var activityData = compressActivities_(currentActivities);
         
         // 3. 経費明細データ (currentExpenses はそのまま)
+        // (v20: areaCode, v22: tax* も含まれる)
         
         var reportData = {
           header: headerData,
           activities: activityData, // 圧縮済み配列を渡す
-          expenses: currentExpenses // (v20) areaCode も含まれる
+          expenses: currentExpenses // (v20, v22)
         };
         
         // console.log("Submitting data:", reportData);
@@ -1808,7 +1907,7 @@
     }
     
     /**
-     * (C) 日報詳細 取得成功 (v20 修正: 経費テーブル・エリア)
+     * (C) 日報詳細 取得成功 (v20, v22 修正: 経費テーブル)
      * @param {object} data { header, activities, expenses }
      */
     function onLoadReportDetailsSuccessC(data) {
@@ -1883,7 +1982,7 @@
         actBody.innerHTML = '<tr><td colspan="3">行動明細はありません。</td></tr>';
       }
       
-      // 3. 経費明細
+      // 3. 経費明細 (v22: 税関連の表示)
       var expBody = document.getElementById('C-expenses-body');
       expBody.innerHTML = '';
       if (expenses && expenses.length > 0) { // v7: null check
@@ -1903,20 +2002,35 @@
           // (v20) エリア名を取得
           var areaName = (ex.areaCode && areaMap[ex.areaCode]) ? areaMap[ex.areaCode] : '';
           
+          // (v22) 税率表示
+          var taxRateDisplay = 'N/A';
+          if (ex.taxRate === 'custom') {
+            taxRateDisplay = (ex.taxRateCustom || '0') + '% (手入力)';
+          } else if (ex.taxRate === 'auto') {
+            taxRateDisplay = '---';
+          } else if (ex.taxRate) {
+            taxRateDisplay = ex.taxRate + '%';
+          }
+          
           // (v19 修正) 経費テーブルに「時間帯」列を追加
+          // (v22 修正) 経費テーブルに「税抜」「税率」列を追加
           expBody.innerHTML += 
             '<tr>' +
               '<td>' + (ex.timeSlot || 'N/A') + '</td>' + // (v19 追加)
               '<td>' + useDate + '</td>' +
               '<td>' + (ex.itemName || '不明な項目') + '</td>' +
-              '<td>' + formatNumber(ex.amount || 0) + '</td>' + // (v17) マッピングされたキー
+              '<td>' + formatNumber(ex.amount || 0) + '</td>' + // (v17) 税込金額
               '<td>' + areaName + '</td>' + // (v20) エリア名
+              // --- (v22) 税関連 ---
+              '<td>' + formatNumber(ex.taxExcludedAmount || 0) + '</td>' + // 税抜金額
+              '<td>' + taxRateDisplay + '</td>' + // 税率
+              // ---
               '<td>' + (ex.remarks || '') + '</td>' + // (v17) マッピングされたキー
               '<td>' + urlLink + '</td>' +
             '</tr>';
         });
       } else {
-        expBody.innerHTML = '<tr><td colspan="7">経費明細はありません。</td></tr>'; // (v20 修正) colspan="6" -> 7
+        expBody.innerHTML = '<tr><td colspan="9">経費明細はありません。</td></tr>'; // (v22 修正) colspan="7" -> 9
       }
       
       // 4. 承認ボタンの制御
@@ -2001,7 +2115,7 @@
     }
     
     /**
-     * (D) 承認済み経費 取得成功 (v17 修正: 日付フォーマット)
+     * (D) 承認済み経費 取得成功 (v17 修正: 日付フォーマット) (v22: 経費項目)
      * @param {object} data { reports: [], expenses: [] }
      */
     function onLoadApprovedExpensesSuccessD(data) {
@@ -2030,6 +2144,7 @@
         if (!expensesMap[rId]) {
           expensesMap[rId] = [];
         }
+        // (v22) ex.itemName (マージ済み) を使用, ex['金額'] (税込) を使用
         expensesMap[rId].push(ex.itemName + ': ' + formatNumber(ex['金額']) + '円');
       });
 
@@ -2196,7 +2311,7 @@
     }
     
     /**
-     * (A) 編集データの読み込み成功 (E -> A) (v20 修正: 経費読み込み)
+     * (A) 編集データの読み込み成功 (E -> A) (v20 修正: 経費読み込み) (v22: 税項目)
      * @param {object} result { status, data, message }
      */
     function onLoadReportForEditSuccessA(result) {
@@ -2217,7 +2332,7 @@
         
         // 2. (v16 修正) 展開済みの activities オブジェクトをセット
         currentActivities = data.activities || {};
-        currentExpenses = data.expenses || []; // (v20) areaCode も含まれる
+        currentExpenses = data.expenses || []; // (v20: areaCode, v22: tax* も含まれる)
 
         // 3. (v14 修正) タイムシートを描画 (v18: バッジ更新はしない)
         renderTimesheetA();
@@ -2258,6 +2373,187 @@
         onApiError(errorMsg); // (v18 修正)
       }
     }
+    
+    // --- (v22 新規) 税計算 & カンマ表示 --------------------------------
+    // (v24 修正: カンマ入力対応)
+    
+    /**
+     * (A) (新規) 消費税率の「その他」手入力欄の表示/非表示を切り替える
+     */
+    function toggleCustomTaxRateA() {
+      var select = document.getElementById('M-tax-rate-select');
+      var customInput = document.getElementById('M-tax-rate-custom');
+      if (select.value === 'custom') {
+        customInput.style.display = 'block';
+      } else {
+        customInput.style.display = 'none';
+        customInput.value = ''; // 隠すときに値をクリア
+      }
+    }
+
+    /**
+     * (A) (新規) 現在選択されている税率 (数値) を取得する
+     * @returns {number | null} 税率 (10, 8, 0 など)。未選択時は null。
+     */
+    function getSelectedTaxRateA() {
+      var select = document.getElementById('M-tax-rate-select');
+      var customInput = document.getElementById('M-tax-rate-custom');
+      
+      if (select.value === 'custom') {
+        return parseFloat(customInput.value) || 0; // 手入力優先
+      }
+      if (select.value === 'auto') {
+        return null; // 未選択
+      }
+      return parseFloat(select.value) || 0;
+    }
+
+    /**
+     * (A) (新規) 消費税の自動計算を実行する
+     * (v24 変更: カンマ入力(hidden input)を読み書きするよう修正)
+     * @param {Event} e イベントオブジェクト (どの要素が変更されたかを知るため)
+     */
+    function handleTaxCalculationA(e) {
+      // 「その他」の表示切り替え
+      toggleCustomTaxRateA();
+      
+      var lastChangedId = e.target.id;
+      
+      // (v24 変更) 隠された number input を参照
+      var taxIncludedInput = document.getElementById('M-amount');
+      var taxExcludedInput = document.getElementById('M-amount-excluding-tax');
+      
+      var taxIncluded = parseFloat(taxIncludedInput.value) || 0;
+      var taxExcluded = parseFloat(taxExcludedInput.value) || 0;
+      var taxRate = getSelectedTaxRateA(); // 10, 8, 0, null
+
+      // 1. 税率が変更された場合
+      if (lastChangedId === 'M-tax-rate-select' || lastChangedId === 'M-tax-rate-custom') {
+        if (taxRate === null) {
+           // 税率が 'auto' に戻されたら、税抜をクリアする
+           // (v24 変更) カンマ入力更新用の関数を使用
+           updateKanmaInputA('M-amount-excluding-tax', '');
+        } else {
+          // 税率が変更されたら、「税込」を基準に「税抜」を再計算する
+          if (taxIncluded > 0) {
+            // (v24 変更) カンマ入力更新用の関数を使用
+            var newTaxExcluded = (taxRate > 0) ? Math.ceil(taxIncluded / (1 + taxRate / 100)) : taxIncluded;
+            updateKanmaInputA('M-amount-excluding-tax', newTaxExcluded);
+          }
+          // 税込が0なら、「税抜」を基準に「税込」を再計算
+          else if (taxExcluded > 0) {
+            // (v24 変更) カンマ入力更新用の関数を使用
+            var newTaxIncluded = Math.round(taxExcluded * (1 + taxRate / 100));
+            updateKanmaInputA('M-amount', newTaxIncluded);
+          }
+        }
+      }
+      // 2. 税抜金額が変更された場合 (v24: 隠された input がトリガー)
+      else if (lastChangedId === 'M-amount-excluding-tax') {
+        if (taxRate !== null) {
+          // 税抜と税率 -> 税込 を計算
+          // (v24 変更) カンマ入力更新用の関数を使用
+          var newTaxIncluded = Math.round(taxExcluded * (1 + taxRate / 100));
+          updateKanmaInputA('M-amount', newTaxIncluded);
+        }
+      }
+      // 3. 税込金額が変更された場合 (v24: 隠された input がトリガー)
+      else if (lastChangedId === 'M-amount') {
+        if (taxRate !== null) {
+          // 税込と税率 -> 税抜 を計算
+          // (v24 変更) カンマ入力更新用の関数を使用
+          var newTaxExcluded = (taxRate > 0) ? Math.ceil(taxIncluded / (1 + taxRate / 100)) : taxIncluded;
+          updateKanmaInputA('M-amount-excluding-tax', newTaxExcluded);
+        } else {
+          // 税率未選択で税込が入力されたら、税抜はクリア
+          // (v24 変更) カンマ入力更新用の関数を使用
+          updateKanmaInputA('M-amount-excluding-tax', '');
+        }
+      }
+      
+      // カンマ区切り表示を更新 (v23: 削除 -> v24: カンマ入力欄の更新は input イベント内で実行される)
+      // updateAmountDisplayA('M-amount');
+      
+      // (v22) 税込金額が変更されたら、上限チェックも実行
+      if (lastChangedId === 'M-amount') {
+        checkExpenseLimitA();
+      }
+    }
+    
+    /**
+     * (A) (v23: 削除) 金額入力欄のカンマ区切り表示を更新する
+     */
+    /*
+    function updateAmountDisplayA(inputId) { ... }
+    */
+
+    // --- (v24 新規) カンマ入力フォーマット --------------------------------
+    
+    /**
+     * (A) (v24 新規) カンマ入力欄のイベントリスナーを初期化
+     */
+    function initializeKanmaInputsA() {
+      document.getElementById('M-amount-display-input').addEventListener('input', formatKanmaInputA);
+      document.getElementById('M-amount-excluding-tax-display-input').addEventListener('input', formatKanmaInputA);
+    }
+    
+    /**
+     * (A) (v24 新規) カンマ入力欄のフォーマット処理
+     */
+    function formatKanmaInputA(e) {
+      var displayInput = e.target;
+      // 'M-amount-display-input' -> 'M-amount'
+      var hiddenInputId = displayInput.id.replace('-display-input', '');
+      var hiddenInput = document.getElementById(hiddenInputId);
+      
+      // 1. カンマや空白を除去して数値のみを取得
+      var numericValueStr = displayInput.value.replace(/[^0-9]/g, '');
+      var numericValue = parseInt(numericValueStr, 10) || 0;
+      
+      // 2. 隠された number input に数値をセット
+      hiddenInput.value = numericValue;
+      
+      // 3. 表示 input にカンマ区切りをセット
+      displayInput.value = numericValue > 0 ? numericValue.toLocaleString() : (numericValueStr === '0' ? '0' : '');
+      
+      // 4. 隠された input の 'input' イベントを発火させ、税計算や上限チェックをトリガー
+      // (※ 'change' ではなく 'input' イベント)
+      hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    
+    /**
+     * (A) (v24 新規) 隠された input とカンマ表示 input の両方をプログラムから更新する
+     * (税計算、規定額セット、編集データ読み込み時に使用)
+     * @param {string} hiddenInputId 'M-amount' または 'M-amount-excluding-tax'
+     * @param {number | string} numericValue セットする数値
+     */
+    function updateKanmaInputA(hiddenInputId, numericValue) {
+      var hiddenInput = document.getElementById(hiddenInputId);
+      var displayInput = document.getElementById(hiddenInputId + '-display-input');
+      
+      if (!hiddenInput || !displayInput) return;
+      
+      var num = parseFloat(numericValue) || 0;
+      
+      // 1. 隠された input に数値をセット
+      hiddenInput.value = num;
+      
+      // 2. 表示 input にカンマ区切りをセット
+      displayInput.value = num > 0 ? num.toLocaleString() : '';
+      
+      // 3. (v24) 隠された input の 'input' イベントを発火 (税計算/上限チェックのため)
+      // ただし、この関数自身が税計算 (handleTaxCalculationA) から呼ばれると無限ループになるため、
+      // handleTaxCalculationA 側ではこの関数を呼ばないようにするか、フラグ制御が必要。
+      // → handleTaxCalculationA が 'M-amount' を *読み取る* 前に 'M-amount-excluding-tax' を *書き込む* ことがあるため、
+      //   ここでイベントを発火させると計算が狂う可能性がある。
+      // → 対策: handleTaxCalculationA は最後に *一回だけ* 関連する input (M-amount) の
+      //   イベントを発火させるか、または計算ロジック内で完結させる。
+      
+      // (v24) handleTaxCalculationA 内での updateKanmaInputA 呼び出しは、
+      // イベント発火を伴わない「値の更新」に留める。
+      // formatKanmaInputA (ユーザー入力時) のみがイベントを発火させる。
+    }
+
 
   </script>
 </body>
