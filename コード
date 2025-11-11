@@ -9,47 +9,69 @@
 // スプレッドシートのID (v2: ユーザー指定のIDに変更)
 var SPREADSHEET_ID = '1CJchjuO03CB0OYmyzdtaOq3N71fRXddG7QBSCJPn1GM';
 
-// シート名 (v5: 修正なし)
+// シート名 (v20: 修正あり)
 var SHEET_NAMES = {
   SETTINGS: '設定',
   EMPLOYEES: '社員マスタ',
   EXPENSE_ITEMS: '経費項目マスタ',
   HEADER: '日報',
   ACTIVITIES: '行動明細',
-  EXPENSES: '経費明細'
+  EXPENSES: '経費明細',
+  TRAVEL_RULES: '出張旅費規定マスタ', // v20: 追加
+  LODGING_AREAS: '宿泊費エリアマスタ', // v20: 追加
+  JOB_CATEGORIES: '職種区分マスタ', // v21: 追加
+  POSITIONS: '役職マスタ', // v21: 追加
+  DEPARTMENTS: '部門マスタ' // v21: 追加
 };
 
 // -----------------------------------------------
-// メイン & 初期化 (v5: 修正なし)
-// -----------------------------------------------
 
-/**
- * WebアプリのGETリクエストハンドラ (v2)
- */
 function doGet(e) {
   var ui = HtmlService.createTemplateFromFile('index.html');
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   
-  // 1. ユーザー情報
+  // 1. ユーザー情報 (v21: 役職、部門、職種コードも含まれる)
   var userInfo = getUserInfo_();
   
   // 2. 経費項目マスタ
   var expenseItems = getSheetData_(SHEET_NAMES.EXPENSE_ITEMS, ss);
   
-  // 3. テンプレートにデータを渡す
-  ui.employeeInfo = JSON.stringify(userInfo.employeeInfo); // ユーザー情報
+  // v20: 新しいマスタを読み込み
+  // 3. 出張旅費規定マスタ
+  var travelRules = getSheetData_(SHEET_NAMES.TRAVEL_RULES, ss);
+  
+  // 4. 宿泊費エリアマスタ
+  var lodgingAreas = getSheetData_(SHEET_NAMES.LODGING_AREAS, ss);
+  
+  // v21: 追加マスタを読み込み
+  // 5. 職種区分マスタ
+  var jobCategories = getSheetData_(SHEET_NAMES.JOB_CATEGORIES, ss);
+  
+  // 6. 役職マスタ
+  var positions = getSheetData_(SHEET_NAMES.POSITIONS, ss);
+  
+  // 7. 部門マスタ
+  var departments = getSheetData_(SHEET_NAMES.DEPARTMENTS, ss);
+  
+  // 8. テンプレートにデータを渡す
+  ui.employeeInfo = JSON.stringify(userInfo.employeeInfo); // ユーザー情報 (v21: 役職/部門/職種コードを含む)
   ui.isManager = userInfo.isManager; // 管理者フラグ
   ui.expenseItems = JSON.stringify(expenseItems); // 経費項目
+  ui.travelRules = JSON.stringify(travelRules); // v20: 出張旅費規定マスタ
+  ui.lodgingAreas = JSON.stringify(lodgingAreas); // v20: 宿泊費エリアマスタ
+  ui.jobCategories = JSON.stringify(jobCategories); // v21: 職種区分マスタ
+  ui.positions = JSON.stringify(positions); // v21: 役職マスタ
+  ui.departments = JSON.stringify(departments); // v21: 部門マスタ
   
-  // 4. HTMLを生成
+  // 9. HTMLを生成
   return ui.evaluate()
     .setTitle('日報兼経費精算アプリ')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 /**
- * ログインユーザーの情報を取得 (v2)
- * @returns {object} { employeeInfo: { id, name }, isManager: boolean }
+ * ログインユーザーの情報を取得 (v21 修正: 役職/部門/職種コード取得)
+ * @returns {object} { employeeInfo: { id, name, email, positionCode, departmentCode, jobCategoryCode }, isManager: boolean }
  */
 function getUserInfo_() {
   var email = Session.getActiveUser().getEmail();
@@ -63,7 +85,10 @@ function getUserInfo_() {
     employeeInfo: {
       id: null,
       name: 'ゲスト',
-      email: email
+      email: email,
+      positionCode: null, // v20: 役職コード (規定の初期値)
+      departmentCode: null, // v21: 所属部門コード (規定の初期値)
+      jobCategoryCode: null // v21: 職種区分コード (規定の初期値)
     },
     isManager: false
   };
@@ -72,6 +97,9 @@ function getUserInfo_() {
     if (data[i]['アドレス'] === email) {
       userInfo.employeeInfo.id = data[i]['社員番号'];
       userInfo.employeeInfo.name = data[i]['社員名'];
+      userInfo.employeeInfo.positionCode = data[i]['役職']; // v20: 「役職」列のコードを取得
+      userInfo.employeeInfo.departmentCode = data[i]['所属部門']; // v21: 「所属部門」列のコードを取得
+      userInfo.employeeInfo.jobCategoryCode = data[i]['職種区分']; // v21: 「職種区分」列のコードを取得
       
       // 役職名で管理者を判定 (v1仕様)
       var position = data[i]['役職名'];
@@ -82,7 +110,7 @@ function getUserInfo_() {
     }
   }
   
-  // マスタにない場合はゲストとして続行 (IDはnull)
+  // マスタにない場合はゲストとして続行 (IDと役職コードはnull)
   return userInfo;
 }
 
@@ -171,7 +199,8 @@ function saveOrSubmitDailyReport(data, status) {
       // 日当がまだ追加されていなければ追加
       var hasAllowance = false;
       for (var j = 0; j < expenses.length; j++) {
-        if (expenses[j].itemCode === 'ALLOWANCE') { // 仮のコード
+        // v20: 自動日当のコード 'ALLOWANCE' と 手入力日当のコード '101' との重複をチェック
+        if (expenses[j].itemCode === 'ALLOWANCE' || expenses[j].itemCode === '101') { 
           hasAllowance = true;
           break;
         }
@@ -180,12 +209,13 @@ function saveOrSubmitDailyReport(data, status) {
         expenses.push({
           reportId: reportId, // 日報ID
           expenseId: 'EXP-' + Utilities.getUuid(), // 経費ID
-          itemCode: 'ALLOWANCE', // 経費項目コード (日当)
+          itemCode: 'ALLOWANCE', // 経費項目コード (自動日当)
           amount: allowanceAmount, // 金額
           receiptUrl: '', // 領収書URL
           note: '日当 (自動計算)', // 備考
           useDate: header.date, // 利用日 (v17: JSから "yyyy-MM-dd" 形式)
           timeSlot: activities.length > 0 ? activities[0].startTime : '07:00' // v5: 仮の時間枠
+          // v20: areaCode は自動計算日当には不要
         });
       }
     }
@@ -227,6 +257,7 @@ function saveOrSubmitDailyReport(data, status) {
       ];
     });
     
+    // (v20 修正) 「経費明細」シートに I列 = 'エリアコード' を追加想定
     // (v17 注意) 「経費明細」シートの H列 = 時間枠 であること
     var expensesRows = expenses.map(function(exp) {
       return [
@@ -237,7 +268,8 @@ function saveOrSubmitDailyReport(data, status) {
         exp.receiptUrl, // 領収書URL
         exp.remarks, // 備考 (v5: exp.note -> exp.remarks)
         exp.useDate, // 利用日 (v17: JSから "yyyy-MM-dd" 形式で渡される)
-        exp.timeSlot || '' // v5: 時間枠 (H列)
+        exp.timeSlot || '', // v5: 時間枠 (H列)
+        exp.areaCode || '' // v20: エリアコード (I列)
       ];
     });
 
@@ -252,6 +284,7 @@ function saveOrSubmitDailyReport(data, status) {
     }
     if (expensesRows.length > 0) {
       var expSheet = ss.getSheetByName(SHEET_NAMES.EXPENSES);
+      // v20 修正: 書き込み列数を動的に (expensesRows[0].length)
       expSheet.getRange(expSheet.getLastRow() + 1, 1, expensesRows.length, expensesRows[0].length)
         .setValues(expensesRows);
     }
@@ -313,7 +346,7 @@ function processImageOCR(base64Image) {
     var fileUrl = file.getUrl();
 
     // 2. Gemini API 呼び出し (v1仕様: gemini-2.5-flash-preview-09-2025, JSONモード)
-    var apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=' + apiKey;
+    var apiUrl = 'https://generativelage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=' + apiKey;
     
     var payload = {
       "contents": [
@@ -367,7 +400,7 @@ function processImageOCR(base64Image) {
 
 
 // -----------------------------------------------
-// (B) (C) 上長・閲覧用 (v17: 修正あり)
+// (B) (C) 上長・閲覧用 (v20: 修正あり)
 // -----------------------------------------------
 
 /**
@@ -387,7 +420,7 @@ function getPendingReports() {
 }
 
 /**
- * (C) 特定の日報の詳細データを取得 (v17 修正: 経費キーマッピング)
+ * (C) 特定の日報の詳細データを取得 (v20 修正: 経費キーマッピング)
  * @param {string} reportId
  * @returns {object} { header, activities, expenses }
  */
@@ -416,7 +449,7 @@ function getReportDetails(reportId) {
     });
     
     // 3. 経費明細
-    // (v17 注意) 「経費明細」シートに '時間枠' (H列) が必要
+    // (v20 注意) 「経費明細」シートに '時間枠' (H列), 'エリアコード' (I列) が必要
     var expensesData = getSheetData_(SHEET_NAMES.EXPENSES, ss);
     var expenses = expensesData.filter(function(row) {
       // v11 修正: 両方を文字列に変換して比較
@@ -441,6 +474,7 @@ function getReportDetails(reportId) {
         remarks: exp['備考'],
         useDate: exp['利用日'], // (v17) yyyy/MM/dd
         timeSlot: exp['時間枠'], // (v17) '時間枠' ヘッダーから取得
+        areaCode: exp['エリアコード'], // v20: 'エリアコード' ヘッダーから取得
         
         // 元々あったマッピング (v5)
         itemName: expenseItemsMap[exp['経費項目コード']] || exp['経費項目コード'],
@@ -782,7 +816,7 @@ function getReportDataForEdit(reportId) {
     var userInfo = getUserInfo_();
     var userId = userInfo.employeeInfo.id;
     
-    var details = getReportDetails(reportId); // v17 で経費キーマッピング対応済み
+    var details = getReportDetails(reportId); // v17 で経費キーマッピング対応済み (v20で areaCode も)
     
     if (!details.header || !details.header['日報ID']) {
       // v10 修正: getReportDetails が空を返した場合のログ
@@ -1015,7 +1049,7 @@ function getSheetData_(sheetName, ss) {
 }
 
 /**
- * 汎用: 特定の日報IDに関連するデータを3シートから削除 (v9 修正: カラム数チェック)
+ * 汎用: 特定の日報IDに関連するデータを3シートから削除 (v20 修正: シート名追加)
  * @param {string} reportId
  * @param {SpreadsheetApp.Spreadsheet} ss (オプション)
  */
@@ -1028,6 +1062,7 @@ function deleteReportData_(reportId, ss) {
     ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   }
   
+  // v20: 削除対象シートのリスト (SHEET_NAMES を参照)
   var sheetsToDelete = [
     SHEET_NAMES.HEADER,
     SHEET_NAMES.ACTIVITIES,
