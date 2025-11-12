@@ -602,23 +602,16 @@ function checkReport(reportId) {
     checkDate: new Date()
   };
   
-  // (v2.6) 承認者へメール通知
+  // (v2.6) 承認者へメール通知 (★修正: 一時的にコメントアウト)
+  /*
   var settings = getSettings_();
   var approverEmail = settings.APPROVER_EMAIL; // (設定シート側のキーも変更必要)
-  if (approverEmail) {
-    var details = getReportDetails(reportId); // メール本文用に詳細取得
-    MailApp.sendEmail({
-      to: approverEmail,
-      subject: '[日報システム] 承認依頼: ' + details.header.担当者 + ' (' + details.header.日付 + ')',
-      body: checkerName + ' さんによるチェックが完了しました。\n' +
-            details.header.担当者 + ' さんの日報の最終承認を行ってください。\n\n' +
-            '日付: ' + details.header.日付 + '\n' +
-            '合計経費: ' + details.header.合計経費 + ' 円\n' +
-            '備考: ' + details.header.備考 + '\n\n' +
+... existing code ...
             'システムにログインして内容を確認・承認してください。\n' +
             ScriptApp.getService().getUrl()
     });
   }
+  */
   
   return updateReportStatus_(reportId, 'チェック済', null, approvalInfo);
 }
