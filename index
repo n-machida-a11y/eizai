@@ -276,10 +276,10 @@
           </table>
         </div>
         <div class="card-footer text-center">
-          <button type="button" class="btn btn-secondary" onclick="saveOrSubmitReportA('一時保存')">
+          <button type="button" class="btn btn-secondary" id="A-save-button" onclick="saveOrSubmitReportA('一時保存')">
             <i class="bi bi-save"></i> 一時保存
           </button>
-          <button type="button" class="btn btn-primary" onclick="saveOrSubmitReportA('申請中')">
+          <button type="button" class="btn btn-primary" id="A-submit-button" onclick="saveOrSubmitReportA('申請中')">
             <i class="bi bi-send-check"></i> 申請する
           </button>
           <button type="button" class="btn btn-outline-danger ms-3" onclick="resetFormA()">
@@ -665,7 +665,7 @@
             <i class="bi bi-trash"></i> 削除
           </button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
-          <button type="button" class="btn btn-primary" onclick="addExpenseItemA()">
+          <button type="button" class="btn btn-primary" id="M-submit-expense" onclick="addExpenseItemA()">
             <i class="bi bi-check-lg"></i> この内容で登録
           </button>
         </div>
@@ -1007,6 +1007,17 @@
      */
     function onApiError(error) {
       showLoading(false); // ローディングを非表示
+      
+      // (★修正) アップロード中だった場合はボタンを有効に戻す
+      // idが存在しないビューでエラーにならないよう、存在チェック
+      var saveBtn = document.getElementById('A-save-button');
+      var submitBtn = document.getElementById('A-submit-button');
+      if (saveBtn) saveBtn.disabled = false;
+      if (submitBtn) submitBtn.disabled = false;
+      
+      // (★修正) モーダル内の登録ボタンも有効に戻す
+      var modalSubmitBtn = document.getElementById('M-submit-expense');
+      if (modalSubmitBtn) modalSubmitBtn.disabled = false;
       
       var message = '不明なエラーが発生しました。';
       
@@ -1409,6 +1420,12 @@
         var statusEl = document.getElementById('M-receiptUrl');
         statusEl.value = 'アップロード中です...';
         
+        // (★修正) 申請ボタンを無効化
+        document.getElementById('A-save-button').disabled = true;
+        document.getElementById('A-submit-button').disabled = true;
+        // (★修正) モーダル内の登録ボタンも無効化
+        document.getElementById('M-submit-expense').disabled = true;
+        
         showLoading(true, '領収書をアップロード中...');
         
         google.script.run
@@ -1428,6 +1445,12 @@
      */
     function onReceiptUploadSuccessA(result) {
       showLoading(false);
+      
+      // (★修正) 申請ボタンを有効化
+      document.getElementById('A-save-button').disabled = false;
+      document.getElementById('A-submit-button').disabled = false;
+      // (★修正) モーダル内の登録ボタンも有効化
+      document.getElementById('M-submit-expense').disabled = false;
       
       if (result && result.status === 'success' && result.url) {
         document.getElementById('M-receiptUrl').value = result.url;
@@ -2054,7 +2077,7 @@
             ? '<a href="' + url + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary p-1" style="--bs-btn-padding-y: .1rem; --bs-btn-padding-x: .4rem; --bs-btn-font-size: .75rem;">' +
                 '<i class="bi bi-box-arrow-up-right"></i> 表示' +
               '</a>' 
-            : ''; // URLがなければ何も表示しない
+            : '<span class="text-muted" style="font-size: 0.85rem;">添付なし</span>'; // (★修正) URLがなければ「添付なし」
             
           var areaName = (ex.areaCode && areaMap[ex.areaCode]) ? areaMap[ex.areaCode] : '';
           
@@ -2088,7 +2111,12 @@
       var approvalButtonsWrapper = document.getElementById('C-approval-buttons');
       approvalButtonsWrapper.style.display = 'none';
       document.getElementById('C-reportId').value = header['日報ID'];
-      approvalButtonsWrapper.innerHTML = ''; // ボタンをクリア
+      // approvalButtonsWrapper.innerHTML = ''; // ボタンをクリア
+      
+      // (★修正) 既存のボタン（<button>要素）だけを削除し、IDを持つinputは残す
+      approvalButtonsWrapper.querySelectorAll('button').forEach(function(btn) {
+        btn.remove();
+      });
 
       var buttonsHtml = '';
       
@@ -2112,6 +2140,8 @@
             '<i class="bi bi-check-circle"></i> 承認する' +
           '</button>';
       }
+      // (★修正) 承認者が「申請中」のものを見るロジックを削除
+      /*
       // 承認者が「申請中」のものを見る場合（承認者も差戻し可能）
       else if (IS_APPROVER && statusText === '申請中' && viewC_ReturnView === 'view-B-approval-list') {
           buttonsHtml += 
@@ -2119,9 +2149,11 @@
               '<i class="bi bi-x-circle"></i> 差戻し' +
           '</button>';
       }
+      */
 
       if (buttonsHtml) {
-        approvalButtonsWrapper.innerHTML = buttonsHtml;
+        // (★修正) innerHTML で上書きするのではなく、HTMLを追記する
+        approvalButtonsWrapper.insertAdjacentHTML('beforeend', buttonsHtml);
         approvalButtonsWrapper.style.display = 'block';
       }
       
@@ -2136,7 +2168,8 @@
       var reportId = document.getElementById('C-reportId').value;
       if (!reportId) return;
       
-      showCustomAlert('この日報を「チェック済」にします。承認者へ通知が飛びます。よろしいですか？', function() {
+      // (★修正) メール通知に関する文言を削除
+      showCustomAlert('この日報を「チェック済」にします。よろしいですか？', function() {
         showLoading(true, 'チェック処理中...');
         google.script.run
           .withSuccessHandler(function(result) {
