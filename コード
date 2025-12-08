@@ -8,6 +8,9 @@
 // スプレッドシートのID (v2: ユーザー指定のIDに変更)
 var SPREADSHEET_ID = '1CJchjuO03CB0OYmyzdtaOq3N71fRXddG7QBSCJPn1GM';
 
+// (vRealtime: 追加) 経理システムのWebアプリURL
+var KEIRI_API_URL = 'https://script.google.com/macros/s/ここに経理アプリのURL/exec';
+
 // シート名 (v20: 修正あり)
 var SHEET_NAMES = {
   SETTINGS: '設定',
@@ -67,10 +70,10 @@ function doGet(e) {
   // 7. 部門マスタ
   var departments = getSheetData_(SHEET_NAMES.DEPARTMENTS, ss);
   
-  // 8. テンプレートにデータを渡す (v2.6 修正)
+  // 8. テンプレートにデータを渡す
   ui.employeeInfo = JSON.stringify(userInfo.employeeInfo); 
-  ui.isChecker = userInfo.isChecker; // (v2.6) チェッカーフラグ
-  ui.isApprover = userInfo.isApprover; // (v2.6) 承認者フラグ
+  ui.isChecker = userInfo.isChecker;
+  ui.isApprover = userInfo.isApprover;
   
   ui.expenseItems = JSON.stringify(expenseItems);
   ui.travelRules = JSON.stringify(travelRules);
@@ -79,7 +82,6 @@ function doGet(e) {
   ui.positions = JSON.stringify(positions);
   ui.departments = JSON.stringify(departments);
   
-  // 9. HTMLを生成 (v2.7.3 修正: .evaluate() を使用)
   return ui.evaluate()
     .setTitle('日報兼経費精算アプリ')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
@@ -87,13 +89,9 @@ function doGet(e) {
 
 /**
  * (v2.6 修正) ログインユーザーの権限を取得
- * @returns {object} { employeeInfo: {...}, isChecker: boolean, isApprover: boolean }
  */
 function getUserInfo_() {
   var email = Session.getEffectiveUser().getEmail(); 
-  // email = 'checker.test@example.com'; // --- テスト用 ---
-  // email = 'approver.test@example.com'; // --- テスト用 ---
-  // email = 'member.test@example.com'; // --- テスト用 ---
   
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var data = getSheetData_(SHEET_NAMES.EMPLOYEES, ss);
@@ -107,7 +105,6 @@ function getUserInfo_() {
       departmentCode: null,
       jobCategoryCode: null
     },
-    // (v2.6 修正) isManager -> isChecker / isApprover
     isChecker: false,
     isApprover: false
   };
@@ -120,7 +117,6 @@ function getUserInfo_() {
       userInfo.employeeInfo.departmentCode = data[i]['所属部門'];
       userInfo.employeeInfo.jobCategoryCode = data[i]['職種区分'];
       
-      // (v2.6 修正) 新しい権限列で判定
       if (data[i]['チェック'] === 'チェック') {
         userInfo.isChecker = true;
       }
@@ -152,17 +148,15 @@ function getSettings_() {
   if (!sheet || sheet.getLastRow() < 1) { 
     return {};
   }
-  
   if (sheet.getLastColumn() < 2) {
-    return {}; // 少なくとも2列必要
+    return {}; 
   }
 
   var data = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues(); 
-  
   var settings = {};
   for (var i = 0; i < data.length; i++) {
-    var keyA = data[i][0] ? String(data[i][0]).trim() : null; // (Column A)
-    var keyB = data[i][1] ? String(data[i][1]).trim() : null; // (Column B)
+    var keyA = data[i][0] ? String(data[i][0]).trim() : null; 
+    var keyB = data[i][1] ? String(data[i][1]).trim() : null; 
 
     if (keyA) {
       settings[keyA] = data[i][1];
@@ -183,10 +177,10 @@ function getSettings_() {
 // -----------------------------------------------
 
 /**
- * 日報の保存または申請 (v2.6 修正: 承認関連列のクリア)
- * @param {object} data { header, activities (圧縮済配列), expenses }
- * @param {string} status "一時保存" / "申請中"
- * @returns {object} { status: "success", message: "..." }
+ * 日報の保存または申請
+ * (vPayeeExp: 支払先を経費明細に追加)
+ * (vCardFlg: カード利用有無を追加)
+ * (vCardAmt: カード金額をO列に移動)
  */
 function saveOrSubmitDailyReport(data, status) {
   var lock = LockService.getScriptLock();
@@ -245,7 +239,6 @@ function saveOrSubmitDailyReport(data, status) {
     }
 
     // 5. シート書き込み用データ準備
-    // (v2.6 修正) N列以降、O, P, Q, R列を追加想定
     var headerRow = [
       reportId, // A: 日報ID
       header.date, // B: 日付
@@ -261,14 +254,13 @@ function saveOrSubmitDailyReport(data, status) {
       totalExpenseAmount, // L: 合計経費
       (status === '申請中') ? new Date() : null, // M: 申請日
       null, // N: 差戻し理由
-      // --- (v2.6 新規) 承認フロー列 ---
       null, // O: チェック者
       null, // P: チェック日時
       null, // Q: 承認者
       null  // R: 承認日時
+      // (vPayeeDelete: 日報ヘッダーからは支払先を削除しました)
     ];
     
-    // (v16 修正) activities は既に圧縮済みの配列
     var activitiesRows = activities.map(function(act) {
       return [
         reportId, // 日報ID
@@ -280,7 +272,9 @@ function saveOrSubmitDailyReport(data, status) {
       ];
     });
     
-    // (v2.2 修正) J, K, L列 = 税関連
+    // (vPayeeExp: 支払先をM列に)
+    // (vCardFlg: カード利用をN列に)
+    // (vCardAmt: カード金額をO列に)
     var expensesRows = expenses.map(function(exp) {
       return [
         reportId, // A: 日報ID
@@ -294,14 +288,19 @@ function saveOrSubmitDailyReport(data, status) {
         exp.areaCode || '', // I: エリアコード
         exp.taxExcludedAmount || null, // J: 税抜金額
         exp.taxRate || null,           // K: 税率 (選択値)
-        exp.taxRateCustom || null      // L: 税率(他) (手入力値)
+        exp.taxRateCustom || null,     // L: 税率(他) (手入力値)
+        exp.payee || '',               // M: 支払先 (新規)
+        exp.isCard ? 'あり' : '',       // N: カード利用 (新規: "あり" or 空白)
+        exp.cardAmount || null         // O: カード利用額 (課長用)
       ];
     });
 
     // 6. シートへ一括書き込み
     if (headerRow.length > 0) {
-      // (v2.6 修正) 書き込み列数を動的に (R列まで)
-      ss.getSheetByName(SHEET_NAMES.HEADER).getRange(ss.getSheetByName(SHEET_NAMES.HEADER).getLastRow() + 1, 1, 1, headerRow.length).setValues([headerRow]);
+      var headerSheet = ss.getSheetByName(SHEET_NAMES.HEADER);
+      var lastRow = headerSheet.getLastRow() + 1;
+      if (lastRow < 2) lastRow = 2; 
+      headerSheet.getRange(lastRow, 1, 1, headerRow.length).setValues([headerRow]);
     }
     if (activitiesRows.length > 0) {
       var actSheet = ss.getSheetByName(SHEET_NAMES.ACTIVITIES);
@@ -314,14 +313,13 @@ function saveOrSubmitDailyReport(data, status) {
         .setValues(expensesRows);
     }
     
-    // 7. メール通知 (v2.6 修正: 宛先をチェッカーに変更)
+    // 7. メール通知
     if (status === '申請中') {
       var settings = getSettings_();
-      // (v2.6 修正) APPROVER_EMAIL_1 -> CHECKER_EMAIL (設定シート側のキーも変更必要)
       var checkerEmail = settings.CHECKER_EMAIL;
       if (checkerEmail) {
         MailApp.sendEmail({
-          to: checkerEmail, // (v2.6) チェッカーへ
+          to: checkerEmail, 
           subject: '[日報システム] チェック依頼: ' + userInfo.employeeInfo.name + ' (' + header.date + ')',
           body: userInfo.employeeInfo.name + ' さんから日報のチェック依頼が届きました。\n\n' +
                 '日付: ' + header.date + '\n' +
@@ -345,18 +343,14 @@ function saveOrSubmitDailyReport(data, status) {
 
 /**
  * (v2.5.1 修正) 領収書画像を指定フォルダに保存してURLを返す
- * @param {string} base64Image
- * @returns {object} { status, url }
  */
 function uploadReceiptImage(base64Image) {
   try {
-    var settings = getSettings_();
-    // (v2.5.1 修正) フォルダIDをコードに直接指定
+    // フォルダIDをコードに直接指定
     var folderId = '1VQgPXronOxngn40uiUVK2eRUPTWSWS4I';
-    // var folderId = settings['RECEIPT_FOLDER_ID']; // 元のコード
 
     if (!folderId) {
-      throw new Error('設定シートのA列またはB列に「RECEIPT_FOLDER_ID」のキーが見つかりません。');
+      throw new Error('フォルダIDが設定されていません。');
     }
 
     var blob = Utilities.newBlob(
@@ -367,7 +361,6 @@ function uploadReceiptImage(base64Image) {
     var folder = DriveApp.getFolderById(folderId);
     var file = folder.createFile(blob);
     
-    // (v2.5.1 修正) 共有設定を ANYONE_WITH_LINK -> DOMAIN に変更
     file.setSharing(DriveApp.Access.DOMAIN, DriveApp.Permission.VIEW);
     
     var fileUrl = file.getUrl();
@@ -384,18 +377,16 @@ function uploadReceiptImage(base64Image) {
 }
 
 // -----------------------------------------------
-// (B) (C) 上長・閲覧用 (v2.9 修正: アコーディオン対応)
+// (B) (C) 上長・閲覧用
 // -----------------------------------------------
 
 /**
- * (B) (v2.9 修正) チェック待ち・承認待ちの日報一覧を取得
- * @returns {object} { pendingCheck: [...], pendingApproval: [...] }
+ * (B) チェック待ち・承認待ちの日報一覧を取得
  */
 function getPendingReports() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var data = getSheetData_(SHEET_NAMES.HEADER, ss);
   
-  // (v2.9 修正) 「申請中」と「チェック済」の2つに分類する
   var pendingCheck = data.filter(function(row) {
     return row['承認ステータス'] === '申請中';
   });
@@ -404,7 +395,6 @@ function getPendingReports() {
     return row['承認ステータス'] === 'チェック済';
   });
   
-  // (v2.9) オブジェクトで両方のリストを返す
   return {
     pendingCheck: pendingCheck,
     pendingApproval: pendingApproval
@@ -414,8 +404,10 @@ function getPendingReports() {
 
 /**
  * (C) 特定の日報の詳細データを取得 (v2.6 修正: 承認列マッピング)
- * @param {string} reportId
- * @returns {object} { header, activities, expenses }
+ * (vPayeeExp: 支払先読み込み)
+ * (vCardFlg: カード利用有無読み込み)
+ * (vCardAmt: カード金額読み込み)
+ * (vTax: 税抜き金額のキー修正)
  */
 function getReportDetails(reportId) {
   try {
@@ -425,18 +417,18 @@ function getReportDetails(reportId) {
     
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     
-    // 1. ヘッダー (v2.6 修正: 承認列もマッピングされる)
+    // 1. ヘッダー
     var headerData = getSheetData_(SHEET_NAMES.HEADER, ss);
     var header = headerData.find(function(row) {
       return String(row['日報ID']) === String(reportId);
     });
     
-    // (v2.6 新規) マッピング: 「チェック者」->「checker」
     if (header) {
       header.checker = header['チェック者'];
       header.checkDate = header['チェック日時'];
       header.approver = header['承認者'];
       header.approveDate = header['承認日時'];
+      // header.payee は削除されました
     }
     
     // 2. 行動明細
@@ -459,7 +451,6 @@ function getReportDetails(reportId) {
     });
     
     expenses = expenses.map(function(exp) {
-      // v17 修正: JSが期待するキー名 (timeSlot等) にマッピングし直す
       return {
         expenseId: exp['経費ID'],
         itemCode: exp['経費項目コード'],
@@ -469,9 +460,16 @@ function getReportDetails(reportId) {
         useDate: exp['利用日'], 
         timeSlot: exp['時間枠'],
         areaCode: exp['エリアコード'],
-        taxExcludedAmount: exp['税抜金額'],
+        // (vTax: 修正) スプレッドシートのヘッダー名が「税抜き金額」でも「税抜金額」でも対応できるようにする
+        taxExcludedAmount: exp['税抜き金額'] || exp['税抜金額'], 
         taxRate: exp['税率'],
         taxRateCustom: exp['税率(他)'],
+        
+        // (vPayeeExp, vCardFlg, vCardAmt)
+        payee: exp['支払先'] || '', 
+        isCard: (exp['カード利用'] === 'あり'),
+        cardAmount: exp['カード金額'],
+        
         itemName: expenseItemsMap[exp['経費項目コード']] || exp['経費項目コード'],
       };
     });
@@ -492,11 +490,7 @@ function getReportDetails(reportId) {
 }
 
 /**
- * (B) 日報ステータスを更新 (内部関数) (v2.6 修正: 承認列のクリア)
- * @param {string} reportId
- * @param {string} newStatus
- * @param {string} rejectionReason (差戻し理由)
- * @param {object | null} [approvalInfo] (オプション) v2.6
+ * (B) 日報ステータスを更新 (内部関数)
  */
 function updateReportStatus_(reportId, newStatus, rejectionReason, approvalInfo) {
   var lock = LockService.getScriptLock();
@@ -523,11 +517,10 @@ function updateReportStatus_(reportId, newStatus, rejectionReason, approvalInfo)
     var applyDateCol = headers.indexOf('申請日');
     var rejectionReasonCol = headers.indexOf('差戻し理由'); // N列
     
-    // (v2.6 新規) 承認フロー列のインデックスを取得
-    var checkerCol = headers.indexOf('チェック者'); // O列
-    var checkDateCol = headers.indexOf('チェック日時'); // P列
-    var approverCol = headers.indexOf('承認者'); // Q列
-    var approveDateCol = headers.indexOf('承認日時'); // R列
+    var checkerCol = headers.indexOf('チェック者');
+    var checkDateCol = headers.indexOf('チェック日時');
+    var approverCol = headers.indexOf('承認者');
+    var approveDateCol = headers.indexOf('承認日時');
     
     if (reportIdCol === -1 || statusCol === -1) {
       throw new Error('日報シートの列(日報ID or 承認ステータス)が見つかりません。');
@@ -539,27 +532,25 @@ function updateReportStatus_(reportId, newStatus, rejectionReason, approvalInfo)
         // 1. ステータス更新
         sheet.getRange(i + 1, statusCol + 1).setValue(newStatus);
         
-        // 2. 差戻し ("差戻し")
-        if (newStatus === '差戻し') {
-          if (applyDateCol > -1) sheet.getRange(i + 1, applyDateCol + 1).setValue(null); // 申請日クリア
-          if (rejectionReasonCol > -1 && rejectionReason) {
-             sheet.getRange(i + 1, rejectionReasonCol + 1).setValue(rejectionReason); // 理由記載
+        // 2. 差戻し
+        if (newStatus === '差戻し' || newStatus === '一時保存') {
+          if (applyDateCol > -1) sheet.getRange(i + 1, applyDateCol + 1).setValue(null); 
+          
+          if (newStatus === '差戻し' && rejectionReasonCol > -1 && rejectionReason) {
+             sheet.getRange(i + 1, rejectionReasonCol + 1).setValue(rejectionReason); 
           }
-          // (v2.6 修正) 承認履歴もすべてクリア
           if (checkerCol > -1) sheet.getRange(i + 1, checkerCol + 1).setValue(null);
           if (checkDateCol > -1) sheet.getRange(i + 1, checkDateCol + 1).setValue(null);
           if (approverCol > -1) sheet.getRange(i + 1, approverCol + 1).setValue(null);
           if (approveDateCol > -1) sheet.getRange(i + 1, approveDateCol + 1).setValue(null);
         }
         
-        // 3. 承認 ("承認済") または チェック ("チェック済") (v2.6 修正)
+        // 3. 承認・チェック
         if (newStatus === '承認済' || newStatus === 'チェック済') {
-          // 差戻し理由をクリア
           if (rejectionReasonCol > -1) {
             sheet.getRange(i + 1, rejectionReasonCol + 1).setValue(null);
           }
           
-          // (v2.6) 承認情報を書き込む
           if (approvalInfo) {
             if (approvalInfo.checkerName && checkerCol > -1) {
               sheet.getRange(i + 1, checkerCol + 1).setValue(approvalInfo.checkerName);
@@ -591,6 +582,39 @@ function updateReportStatus_(reportId, newStatus, rejectionReason, approvalInfo)
 }
 
 /**
+ * (vNew: 追加) 申請取り下げ（申請中 -> 一時保存）
+ * 申請者本人が実行することを想定
+ */
+function withdrawReport(reportId) {
+  // 権限チェック: 本人かどうか
+  var userInfo = getUserInfo_();
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var headerSheet = ss.getSheetByName(SHEET_NAMES.HEADER);
+  var data = getSheetData_(SHEET_NAMES.HEADER, ss);
+  
+  var targetReport = data.find(function(row) {
+    return String(row['日報ID']) === String(reportId);
+  });
+  
+  if (!targetReport) {
+    return { status: "error", message: "対象の日報が見つかりません。" };
+  }
+  
+  // 申請者本人かチェック
+  if (String(targetReport['申請者社員番号']) !== String(userInfo.employeeInfo.id)) {
+    return { status: "error", message: "他人の申請を取り下げることはできません。" };
+  }
+  
+  // ステータスが「申請中」であることを確認
+  if (targetReport['承認ステータス'] !== '申請中') {
+    return { status: "error", message: "「申請中」以外のステータスは取り下げできません。" };
+  }
+  
+  // ステータスを「一時保存」に戻す
+  return updateReportStatus_(reportId, '一時保存', null, null);
+}
+
+/**
  * (B) (v2.6 新規) チェック処理
  */
 function checkReport(reportId) {
@@ -602,22 +626,11 @@ function checkReport(reportId) {
     checkDate: new Date()
   };
   
-  // (v2.6) 承認者へメール通知 (★修正: 一時的にコメントアウト)
-  /*
-  var settings = getSettings_();
-  var approverEmail = settings.APPROVER_EMAIL; // (設定シート側のキーも変更必要)
-... existing code ...
-            'システムにログインして内容を確認・承認してください。\n' +
-            ScriptApp.getService().getUrl()
-    });
-  }
-  */
-  
   return updateReportStatus_(reportId, 'チェック済', null, approvalInfo);
 }
 
 /**
- * (B) 承認処理 (v2.6 修正: 承認者情報)
+ * (B) 承認処理 (vAuto: 承認後に自動で経理連携)
  */
 function approveReport(reportId) {
   var userInfo = getUserInfo_();
@@ -628,41 +641,60 @@ function approveReport(reportId) {
     approveDate: new Date()
   };
   
-  return updateReportStatus_(reportId, '承認済', null, approvalInfo);
+  // 1. まず承認済にする（承認者情報を記録するため）
+  var result = updateReportStatus_(reportId, '承認済', null, approvalInfo);
+  
+  // 2. 成功したら自動で経理連携 (vAuto: 追加)
+  if (result.status === 'success') {
+    try {
+      // 詳細データを取得
+      var details = getReportDetails(reportId);
+      
+      // 経理APIを叩く
+      callKeiriApi_('営業用', reportId, details);
+      
+      // 3. 連携成功したらステータスを「精算申請済」に進める
+      // これにより、申請者が手動で「精算申請」ボタンを押す手間を省く
+      updateReportStatus_(reportId, '精算申請済', null, null);
+      
+      result.message += "\nまた、自動で経理システムへの連携も完了しました。";
+      
+    } catch (e) {
+      console.error('自動経理連携エラー (ID: ' + reportId + '): ' + e.toString());
+      result.message += "\n(※経理連携に失敗しました。後で手動で「経費精算」から申請を行ってください)";
+      // ステータスは「承認済」のままなので、Dビューから手動申請可能
+    }
+  }
+  
+  return result;
 }
 
 /**
- * (B) 差戻し (v2.6 修正: 差戻し時も権限チェック)
- * @param {string} reportId
- * @param {string} rejectionReason
+ * (B) 差戻し
  */
 function rejectReport(reportId, rejectionReason) {
-  // (v2.6) 差戻しはチェッカーまたは承認者であれば可能 (権限チェックは不要かも？)
   return updateReportStatus_(reportId, '差戻し', rejectionReason, null);
 }
 
 
 // -----------------------------------------------
-// (D) 経費精算用 (v9: 修正あり)
+// (D) 経費精算用
 // -----------------------------------------------
 
 /**
  * (D) 承認済みの経費データを取得
- * @returns {object} { reports: [], expenses: [] }
  */
 function getApprovedExpenses() {
   var userInfo = getUserInfo_();
   var userId = userInfo.employeeInfo.id;
-  
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   
-  // 1. 自分が申請し、"承認済" の日報ヘッダーを取得
   var allHeaders = getSheetData_(SHEET_NAMES.HEADER, ss);
   var approvedReports = allHeaders.filter(function(row) {
-    var totalExpense = parseFloat(row['合計経費'] || 0); // (★修正) 合計経費を数値で取得
+    var totalExpense = parseFloat(row['合計経費'] || 0); 
     return String(row['申請者社員番号']) === String(userId) && 
            row['承認ステータス'] === '承認済' &&
-           totalExpense > 0; // (★修正) 合計経費が0円より大きいもののみ
+           totalExpense > 0;
   });
   
   if (approvedReports.length === 0) {
@@ -671,7 +703,6 @@ function getApprovedExpenses() {
   
   var approvedReportIds = approvedReports.map(function(r) { return r['日報ID']; });
   
-  // 2. 該当する経費明細をすべて取得
   var allExpenses = getSheetData_(SHEET_NAMES.EXPENSES, ss);
   var approvedExpenses = allExpenses.filter(function(exp) {
     return approvedReportIds.some(function(approvedId) {
@@ -679,7 +710,6 @@ function getApprovedExpenses() {
     });
   });
   
-  // 3. 経費項目マスタをマージ
   var expenseItemsMaster = getSheetData_(SHEET_NAMES.EXPENSE_ITEMS, ss);
   var expenseItemsMap = {};
   expenseItemsMaster.forEach(function(item) {
@@ -691,15 +721,19 @@ function getApprovedExpenses() {
     
     exp.expenseId = exp['経費ID'];
     exp.itemCode = exp['経費項目コード'];
-    exp.amount = exp['金額']; // 税込
+    exp.amount = exp['金額']; 
     exp.receiptUrl = exp['領収書URL'];
     exp.remarks = exp['備考'];
     exp.useDate = exp['利用日'];
     exp.timeSlot = exp['時間枠'];
     exp.areaCode = exp['エリアコード'];
-    exp.taxExcludedAmount = exp['税抜金額'];
+    exp.taxExcludedAmount = exp['税抜き金額'] || exp['税抜金額'];
     exp.taxRate = exp['税率'];
     exp.taxRateCustom = exp['税率(他)'];
+    // (vPayeeExp, vCardFlg, vCardAmt)
+    exp.payee = exp['支払先'];
+    exp.isCard = (exp['カード利用'] === 'あり');
+    exp.cardAmount = exp['カード金額'];
     
     return exp;
   });
@@ -712,8 +746,6 @@ function getApprovedExpenses() {
 
 /**
  * (D) 最終的な経費精算申請
- * @param {Array} reportIds 申請対象の日報ID配列
- * @returns {object} { status, message }
  */
 function submitFinalExpenses(reportIds) {
   if (!reportIds || reportIds.length === 0) {
@@ -740,9 +772,9 @@ function submitFinalExpenses(reportIds) {
     var headers = data[0];
     var reportIdCol = headers.indexOf('日報ID');
     var statusCol = headers.indexOf('承認ステータス');
-    var applicantCol = headers.indexOf('担当者'); // メール送信用
-    var dateCol = headers.indexOf('日付'); // メール送信用
-    var totalCol = headers.indexOf('合計経費'); // メール送信用
+    var applicantCol = headers.indexOf('担当者');
+    var dateCol = headers.indexOf('日付'); 
+    var totalCol = headers.indexOf('合計経費');
     
     if (reportIdCol === -1 || statusCol === -1) {
       throw new Error('日報シートの列(日報ID or 承認ステータス)が見つかりません。');
@@ -757,10 +789,11 @@ function submitFinalExpenses(reportIds) {
 
     for (var i = 1; i < data.length; i++) {
       if (reportIdsStr.indexOf(String(data[i][reportIdCol])) > -1) {
-        // ステータスを "精算申請済" に更新
         sheet.getRange(i + 1, statusCol + 1).setValue('精算申請済');
         updatedCount++;
         
+        var currentReportId = data[i][reportIdCol];
+
         if (!applicantName) {
           applicantName = data[i][applicantCol];
         }
@@ -770,6 +803,13 @@ function submitFinalExpenses(reportIds) {
           ? Utilities.formatDate(data[i][dateCol], Session.getScriptTimeZone(), 'yyyy/MM/dd')
           : data[i][dateCol];
         targetDetails.push('   - ' + dateStr + ' (¥' + data[i][totalCol] + ')');
+
+        try {
+          var details = getReportDetails(currentReportId);
+          callKeiriApi_('営業用', currentReportId, details);
+        } catch (apiErr) {
+          console.error('経理連携エラー (ID: ' + currentReportId + '): ' + apiErr.toString());
+        }
       }
     }
     
@@ -777,7 +817,6 @@ function submitFinalExpenses(reportIds) {
       throw new Error('対象のデータが見つかりませんでした。');
     }
     
-    // 経理担当へメール送信
     var settings = getSettings_();
     var accountingEmail = settings.ACCOUNTING_EMAIL;
     if (accountingEmail) {
@@ -805,12 +844,11 @@ function submitFinalExpenses(reportIds) {
 
 
 // -----------------------------------------------
-// (E) 日報一覧用 (v2.5.2 修正: ソート順)
+// (E) 日報一覧用
 // -----------------------------------------------
 
 /**
- * (E) 自分の日報一覧を取得 (v2.5.2 修正: ステータスソート追加)
- * @returns {Array} 自分の日報データ
+ * (E) 自分の日報一覧を取得
  */
 function getMyReports() {
   try {
@@ -818,20 +856,16 @@ function getMyReports() {
     var targetEmployeeId = userInfo.employeeInfo.id;
     
     if (!targetEmployeeId) {
-      return []; // ゲストユーザー
+      return []; 
     }
 
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    
     var allData = getSheetData_(SHEET_NAMES.HEADER, ss);
-
     var idxApplicant = '申請者社員番号';
-    
     var myReports = [];
     
     for (var i = 0; i < allData.length; i++) {
       if (String(allData[i][idxApplicant]) === String(targetEmployeeId)) {
-        
         myReports.push({
           '日報ID': allData[i]['日報ID'],
           '日付': allData[i]['日付'],
@@ -842,25 +876,21 @@ function getMyReports() {
       }
     }
     
-    // (v2.5.2 修正) 優先度でステータスをソート
     var statusOrder = {
       '一時保存': 1,
       '差戻し': 2,
       '申請中': 3,
-      'チェック済': 4, // (v2.6)
+      'チェック済': 4, 
       '承認済': 5,
       '精算申請済': 6
     };
 
     myReports.sort(function(a, b) {
-      // 1. ステータス優先度でソート (昇順)
       var statusA = statusOrder[a['承認ステータス']] || 99;
       var statusB = statusOrder[b['承認ステータス']] || 99;
       if (statusA !== statusB) {
         return statusA - statusB;
       }
-      
-      // 2. ステータスが同じなら、日付でソート (降順)
       return (b['日付'] || '').localeCompare(a['日付'] || '');
     });
 
@@ -874,8 +904,6 @@ function getMyReports() {
 
 /**
  * (E) 編集用に日報データを取得
- * @param {string} reportId
- * @returns {object} { status, data, message }
  */
 function getReportDataForEdit(reportId) {
   try {
@@ -885,27 +913,21 @@ function getReportDataForEdit(reportId) {
     var details = getReportDetails(reportId);
     
     if (!details.header || !details.header['日報ID']) {
-      Logger.log('getReportDataForEdit: getReportDetails が空のヘッダーを返しました。ReportID: ' + reportId);
       return { status: "error", message: "対象の日報データが見つかりません。" };
     }
     
     if (String(details.header['申請者社員番号']) !== String(userId)) {
-      Logger.log('getReportDataForEdit: 権限エラー。 UserID: ' + userId + ', ReportApplicantID: ' + details.header['申請者社員番号']);
       return { status: "error", message: "この日報を編集する権限がありません。" };
     }
     
     var status = details.header['承認ステータス'];
     if (status !== '一時保存' && status !== '差戻し') {
-      Logger.log('getReportDataForEdit: ステータスエラー。 Status: ' + status);
       return { status: "error", message: "「" + status + "」の日報は編集できません。" };
     }
     
-    // --- (v16 修正) activities を配列から30分枠オブジェクトに「展開」 ---
     var activitiesObj = decompressActivities_(details.activities);
-    details.activities = activitiesObj; // 展開済みオブジェクトで上書き
-    // --- v16 修正ここまで ---
+    details.activities = activitiesObj; 
 
-    // 成功
     return { status: "success", data: details };
     
   } catch (e) {
@@ -919,15 +941,10 @@ function getReportDataForEdit(reportId) {
 // 汎用ヘルパー関数
 // -----------------------------------------------
 
-/**
- * 活動時間（移動・商談）を集計する
- * @param {Array} activities 行動明細の配列 (圧縮済: [{startTime, endTime, type}, ...])
- * @returns {object} { totalMovementHours, totalMeetingHours, totalActiveMinutes }
- */
 function calculateActivityTotals_(activities) {
   var totalMovementMinutes = 0;
   var totalMeetingMinutes = 0;
-  var totalActiveMinutes = 0; // 日当計算用
+  var totalActiveMinutes = 0;
 
   if (!activities || activities.length === 0) {
     return { totalMovementHours: 0, totalMeetingHours: 0, totalActiveMinutes: 0 };
@@ -956,7 +973,7 @@ function calculateActivityTotals_(activities) {
         }
       }
     } catch (e) {
-      Logger.log('calculateActivityTotals_ Error: ' + e.message + ' (Input: ' + act.startTime + ' - ' + act.endTime + ')');
+      Logger.log('calculateActivityTotals_ Error: ' + e.message);
     }
   }
 
@@ -967,11 +984,6 @@ function calculateActivityTotals_(activities) {
   };
 }
 
-/**
- * (v16 新規) 圧縮された活動配列を、30分枠のオブジェクトに展開する
- * @param {Array} activitiesArray [{ '開始時刻': "07:30", '終了時刻': "09:00", '活動区分': "移動", ... }, ...]
- * @returns {object} { "07:30": {type: "移動", ...}, "08:00": {type: "移動", ...}, "08:30": {type: "移動", ...} }
- */
 function decompressActivities_(activitiesArray) {
   var activitiesObj = {};
   
@@ -979,7 +991,6 @@ function decompressActivities_(activitiesArray) {
     return activitiesObj;
   }
   
-  // タイムスロット (07:00 ... 18:00) をDateオブジェクトの分換算でMap化 (比較用)
   var timeSlotMinutes = {};
   var baseDate = new Date('1970/01/01 00:00:00');
   for (var h = 7; h <= 18; h++) {
@@ -1002,11 +1013,11 @@ function decompressActivities_(activitiesArray) {
       var actEndMin = timeSlotMinutes[actEndStr];
 
       if (actStartMin === undefined || actEndMin === undefined || actStartMin >= actEndMin) {
-        return; // 不正データはスキップ
+        return; 
       }
 
       Object.keys(timeSlotMinutes).forEach(function(slotTimeStr) {
-        if (slotTimeStr === "18:00") return; // 18:00 は開始時刻なのでループ対象外
+        if (slotTimeStr === "18:00") return; 
         
         var slotStartMin = timeSlotMinutes[slotTimeStr];
         
@@ -1027,32 +1038,18 @@ function decompressActivities_(activitiesArray) {
 }
 
 
-/**
- * 汎用: シートデータをオブジェクト配列に変換
- * @param {string} sheetName
- * @param {SpreadsheetApp.Spreadsheet} ss (オプション)
- * @returns {Array}
- */
 function getSheetData_(sheetName, ss) {
   if (!ss) {
     ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   }
   var sheet = ss.getSheetByName(sheetName);
-  
-  if (!sheet) {
-    Logger.log('シートが見つかりません: ' + sheetName);
-    return [];
-  }
+  if (!sheet) return [];
   
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    return []; // ヘッダーのみ、または空
-  }
+  if (lastRow < 2) return [];
   
   var lastCol = sheet.getLastColumn();
-  if (lastCol < 1) {
-    return [];
-  }
+  if (lastCol < 1) return [];
   
   var data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
   var headers = data.shift();
@@ -1060,11 +1057,9 @@ function getSheetData_(sheetName, ss) {
   var result = data.map(function(row) {
     var obj = {};
     headers.forEach(function(header, index) {
-      
       if (row[index] instanceof Date) {
         try {
           var date = row[index];
-          
           if (date.getFullYear() === 1899 && date.getMonth() === 11 && date.getDate() === 30) {
              obj[header] = Utilities.formatDate(date, Session.getScriptTimeZone(), 'HH:mm');
           }
@@ -1074,72 +1069,71 @@ function getSheetData_(sheetName, ss) {
           else {
              obj[header] = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm:ss');
           }
-          
         } catch(e) {
            obj[header] = row[index].toString();
         }
       } else {
         obj[header] = row[index];
       }
-      
     });
     return obj;
   });
-  
   return result;
 }
 
-/**
- * 汎用: 特定の日報IDに関連するデータを3シートから削除
- * @param {string} reportId
- * @param {SpreadsheetApp.Spreadsheet} ss (オプション)
- */
 function deleteReportData_(reportId, ss) {
-  if (!reportId) {
-    return;
-  }
+  if (!reportId) return;
+  if (!ss) ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   
-  if (!ss) {
-    ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  }
-  
-  var sheetsToDelete = [
-    SHEET_NAMES.HEADER,
-    SHEET_NAMES.ACTIVITIES,
-    SHEET_NAMES.EXPENSES
-  ];
+  var sheetsToDelete = [SHEET_NAMES.HEADER, SHEET_NAMES.ACTIVITIES, SHEET_NAMES.EXPENSES];
 
   sheetsToDelete.forEach(function(sheetName) {
     var sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() < 2) return;
     
-    if (!sheet || sheet.getLastRow() < 2) {
-      return;
-    }
-    
-    var lastCol = sheet.getLastColumn();
-    if (lastCol < 1) {
-      return;
-    }
-    
-    var data = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
-    var headers = data[0];
-    
-    var reportIdCol = headers.indexOf('日報ID');
-    if (reportIdCol === -1) {
-      return;
-    }
+    var data = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+    var reportIdCol = data[0].indexOf('日報ID');
+    if (reportIdCol === -1) return;
     
     var rowsToDelete = [];
     for (var i = 1; i < data.length; i++) {
       if (String(data[i][reportIdCol]) === String(reportId)) {
-        rowsToDelete.push(i + 1); // 1-based index (行番号)
+        rowsToDelete.push(i + 1);
       }
     }
     
     rowsToDelete.sort(function(a, b) { return b - a; });
-    
     rowsToDelete.forEach(function(rowNum) {
       sheet.deleteRow(rowNum);
     });
   });
+}
+
+function callKeiriApi_(systemType, reportId, details) {
+  if (!KEIRI_API_URL || KEIRI_API_URL.indexOf('ここに') > -1) {
+    console.warn('KEIRI_API_URL が未設定のため、連携をスキップします。');
+    return;
+  }
+
+  var payload = {
+    systemType: systemType,
+    reportId: reportId,
+    details: details
+  };
+
+  var options = {
+    'method': 'post',
+    'contentType': 'application/json',
+    'payload': JSON.stringify(payload),
+    'muteHttpExceptions': true
+  };
+
+  var response = UrlFetchApp.fetch(KEIRI_API_URL, options);
+  var resCode = response.getResponseCode();
+  
+  if (resCode !== 200) {
+    throw new Error('API Error (' + resCode + ')');
+  }
+  
+  console.log('経理連携成功: ' + reportId);
 }
