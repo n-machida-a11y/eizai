@@ -876,19 +876,31 @@
 
     /**
      * (v18 新規) カスタムAlert/Promptモーダルの初期化
+     * (★ 2025/11/12 修正) Alertモーダルが「OK」ボタンでのみコールバックを実行するように修正
      */
     function initializeCustomModalsA() {
       var alertModalEl = document.getElementById('customAlertModal');
       customAlertModalInstance = new bootstrap.Modal(alertModalEl);
       
-      // Alertモーダルが閉じたときにコールバックを実行
-      alertModalEl.addEventListener('hidden.bs.modal', function() {
+      // (★修正) OKボタンがクリックされた時だけコールバックを実行
+      document.getElementById('customAlertOkButton').addEventListener('click', function() {
         if (typeof customAlertCallback === 'function') {
           customAlertCallback();
           customAlertCallback = null; // コールバックをリセット
         }
+        // OKボタンには data-bs-dismiss="modal" が付いているため、自動で閉じる
+      });
+      
+      // (★修正) Alertモーダルが閉じたとき（OK以外で閉じた場合）
+      alertModalEl.addEventListener('hidden.bs.modal', function() {
+        // もしOKボタンが押されずに閉じられた場合（コールバックが残っている場合）、
+        // コールバックをキャンセル（null化）する。
+        if (typeof customAlertCallback === 'function') {
+          customAlertCallback = null; // コールバックをリセット（実行しない）
+        }
       });
 
+      // --- Promptモーダルの処理 (ここは変更なし) ---
       var promptModalEl = document.getElementById('customPromptModal');
       customPromptModalInstance = new bootstrap.Modal(promptModalEl);
       
