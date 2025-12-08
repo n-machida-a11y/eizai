@@ -659,7 +659,10 @@ function getApprovedExpenses() {
   // 1. 自分が申請し、"承認済" の日報ヘッダーを取得
   var allHeaders = getSheetData_(SHEET_NAMES.HEADER, ss);
   var approvedReports = allHeaders.filter(function(row) {
-    return String(row['申請者社員番号']) === String(userId) && row['承認ステータス'] === '承認済';
+    var totalExpense = parseFloat(row['合計経費'] || 0); // (★修正) 合計経費を数値で取得
+    return String(row['申請者社員番号']) === String(userId) && 
+           row['承認ステータス'] === '承認済' &&
+           totalExpense > 0; // (★修正) 合計経費が0円より大きいもののみ
   });
   
   if (approvedReports.length === 0) {
