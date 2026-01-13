@@ -119,8 +119,23 @@
 
 
     /* 日報一覧 (E) */
-    #E-my-reports-list-body tr {
-      cursor: pointer;
+    /* テーブル全体のスタイル */
+    #E-my-reports-table {
+      font-size: 0.9rem;
+    }
+    #E-my-reports-table th {
+      background-color: #f8f9fa;
+      text-align: center;
+      white-space: nowrap;
+    }
+    #E-my-reports-table td {
+      vertical-align: middle;
+    }
+    /* ステータス行の区切り */
+    .status-group-header {
+      background-color: #e9ecef !important;
+      font-weight: bold;
+      padding: 0.5rem 1rem;
     }
     
     /* (v18 新規) カスタムモーダルはローディングより手前に表示 */
@@ -168,19 +183,14 @@
               <i class="bi bi-list-task"></i> 日報一覧
             </a>
           </li>
-          <!-- (D) 経費精算 -->
-          <li class="nav-item">
-            <a class="nav-link" href="#" data-view="view-D-expense-summary">
-              <i class="bi bi-cash-coin"></i> 経費精算
-            </a>
-          </li>
-          <!-- (B) チェック・承認待ち (v2.6 修正) -->
-          <!-- (v2.6 修正) isManager -> isChecker || isApprover -->
+          
+          <!-- (B) 承認待ち一覧 -->
+          <!-- チェック者も承認者も同じ「承認」権限として扱います -->
           <? if (isChecker || isApprover) { ?>
           <li class="nav-item">
             <a class="nav-link" href="#" data-view="view-B-approval-list">
               <i class="bi bi-check2-circle"></i> 
-              チェック・承認待ち <!-- (v2.6 修正) 名称変更 -->
+              承認待ち一覧
               <span class="badge bg-danger" id="approval-count-badge"></span>
             </a>
           </li>
@@ -307,78 +317,34 @@
       </datalist>
     </div>
 
-    <!-- ===== (B) チェック・承認待ち一覧ビュー (v2.9 修正: アコーディオン) ===== -->
+    <!-- ===== (B) 承認待ち一覧ビュー ===== -->
     <div id="view-B-approval-list" class="app-view">
-      <h3 class="mb-3"><i class="bi bi-check2-circle"></i> チェック・承認待ち一覧</h3>
+      <h3 class="mb-3"><i class="bi bi-check2-circle"></i> 承認待ち一覧</h3>
       
-      <!-- (v2.9 修正) card + table -> accordion に変更 -->
-      <div class="accordion" id="approval-accordion">
-        
-        <!-- 1. 要チェック（申請中） -->
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="heading-check">
-            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-check" aria-expanded="true" aria-controls="collapse-check">
-              <i class="bi bi-pencil-square me-2"></i>
-              要チェック（申請中）
-              <span class="badge bg-primary ms-2" id="B-count-check">0</span>
-            </button>
-          </h2>
-          <!-- (v2.9) data-bs-parent="#approval-accordion" を削除し、両方開けるようにする -->
-          <div id="collapse-check" class="accordion-collapse collapse show" aria-labelledby="heading-check">
-            <div class="accordion-body p-0">
-              <div class="table-responsive">
-                <table class="table table-hover mb-0 approval-accordion-table">
-                  <thead class="table-light">
-                    <tr>
-                      <th>日付</th>
-                      <th>申請者</th>
-                      <th>チェック状況</th>
-                      <th>合計経費 (円)</th>
-                    </tr>
-                  </thead>
-                  <tbody id="B-approval-list-body-check">
-                    <!-- JSで動的生成 -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+      <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> 申請中の日報一覧です。内容を確認し、承認（精算申請）を行ってください。
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>日付</th>
+                <th>申請者</th>
+                <th>ステータス</th>
+                <th>合計経費 (円)</th>
+              </tr>
+            </thead>
+            <tbody id="B-approval-list-body">
+              <!-- JSで動的生成 -->
+            </tbody>
+          </table>
         </div>
-        
-        <!-- 2. 要承認（チェック済） -->
-        <div class="accordion-item">
-          <h2 class="accordion-header" id="heading-approve">
-            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-approve" aria-expanded="false" aria-controls="collapse-approve">
-              <i class="bi bi-check2-circle me-2"></i>
-              要承認（チェック済）
-              <span class="badge bg-warning text-dark ms-2" id="B-count-approve">0</span>
-            </button>
-          </h2>
-          <div id="collapse-approve" class="accordion-collapse collapse" aria-labelledby="heading-approve">
-            <div class="accordion-body p-0">
-              <div class="table-responsive">
-                <table class="table table-hover mb-0 approval-accordion-table">
-                  <thead class="table-light">
-                    <tr>
-                      <th>日付</th>
-                      <th>申請者</th>
-                      <th>チェック状況</th>
-                      <th>合計経費 (円)</th>
-                    </tr>
-                  </thead>
-                  <tbody id="B-approval-list-body-approve">
-                    <!-- JSで動的生成 -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-        
       </div>
     </div>
 
-    <!-- ===== (C) 日報詳細ビュー (v2.9 修正: 領収書ボタン) ===== -->
+    <!-- ===== (C) 日報詳細ビュー (承認用) ===== -->
     <div id="view-C-report-detail" class="app-view">
       <h3 class="mb-3"><i class="bi bi-file-earmark-text"></i> 日報詳細</h3>
       
@@ -434,12 +400,6 @@
         <div class="card-header">承認履歴</div>
         <div class="card-body">
           <div class="row">
-            <div class="col-md-6">
-              <strong>チェック者:</strong> <span id="C-history-checker">N/A</span>
-            </div>
-            <div class="col-md-6">
-              <strong>チェック日時:</strong> <span id="C-history-check-date">N/A</span>
-            </div>
             <div class="col-md-6">
               <strong>承認者:</strong> <span id="C-history-approver">N/A</span>
             </div>
@@ -497,88 +457,51 @@
         </div>
       </div>
 
-      <!-- 承認/差戻しボタン (v2.6 修正) -->
+      <!-- 承認/差戻しボタン (修正) -->
       <div id="C-approval-buttons" class="text-center" style="display: none;">
         <input type="hidden" id="C-reportId">
-        <!-- JSで動的生成 (handleCheckC / handleApproveC) -->
+        <!-- JSで動的生成 (handleApproveC) -->
       </div>
 
     </div>
 
-    <!-- ===== (D) 経費精算まとめビュー ===== -->
-    <div id="view-D-expense-summary" class="app-view">
-      <h3 class="mb-3"><i class="bi bi-cash-coin"></i> 経費精算まとめ</h3>
-      
-      <div class="alert alert-info">
-        「承認済」ステータスで、まだ経費精算が申請されていない日報が表示されます。<br>
-        対象を選択し、「精算申請を送信」ボタンを押してください。経理担当者に通知が送信されます。
-      </div>
-
-      <div class="card shadow-sm">
-        <div class="card-header">
-          <div class="d-flex justify-content-between align-items-center">
-            <span>精算対象一覧</span>
-            <button class="btn btn-sm btn-primary" onclick="submitFinalExpensesD()">
-              <i class="bi bi-send-check"></i> 選択した日報の精算申請を送信
-            </button>
-          </div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead class="table-light">
-              <tr>
-                <th style="width: 50px;">
-                  <input class="form-check-input" type="checkbox" id="D-check-all" onchange="toggleAllCheckboxesD(this.checked)">
-                </th>
-                <th>日付</th>
-                <th>合計経費 (円)</th>
-                <th>経費詳細</th>
-                <th>ID</th>
-              </tr>
-            </thead>
-            <tbody id="D-expense-list-body">
-              <!-- JSで動的生成 -->
-            </tbody>
-            <tfoot class="table-group-divider">
-              <tr>
-                <td colspan="2" class="text-end fw-bold">選択合計</td>
-                <td class="fw-bold text-danger fs-5" id="D-total-selected-amount">0 円</td>
-                <td colspan="2"></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== (E) 日報一覧ビュー (v2.5.2 修正) ===== -->
+    <!-- ===== (E) 日報一覧ビュー (テーブル形式・セル結合) ===== -->
     <div id="view-E-my-reports" class="app-view">
-      <h3 class="mb-3"><i class="bi bi-list-task"></i> 日報一覧 (自分)</h3>
+      <h3 class="mb-3"><i class="bi bi-list-task"></i> 自分の申請履歴</h3>
+      <div class="d-flex justify-content-end mb-2">
+        <button class="btn btn-sm btn-outline-primary" onclick="loadMyReportsE()">
+          <i class="bi bi-arrow-clockwise"></i> 更新
+        </button>
+      </div>
+      
       <div class="card shadow-sm">
-        <div class="card-header">
-          <div class="d-flex justify-content-between align-items-center">
-            <span>自分の申請履歴</span>
-            <button class="btn btn-sm btn-outline-primary" onclick="loadMyReportsE()">
-              <i class="bi bi-arrow-clockwise"></i> 更新
-            </button>
-          </div>
-        </div>
         <div class="table-responsive">
-          <table class="table table-hover mb-0">
+          <table class="table table-bordered table-hover mb-0 align-middle" id="E-my-reports-table">
             <thead class="table-light">
               <tr>
-                <th>日付</th>
-                <th>ステータス</th>
-                <th>合計経費 (円)</th>
-                <th>備考</th>
-                <th>操作</th>
+                <th style="min-width: 90px;">申請日</th>
+                <th style="min-width: 90px;">ステータス</th>
+                <th style="min-width: 120px;">件名</th>
+                <th style="min-width: 100px;">合計経費<br>(円)</th>
+                
+                <th style="min-width: 90px;">利用日</th>
+                <th style="min-width: 100px;">経費項目</th>
+                <th style="min-width: 100px;">経費詳細<br>(円)</th>
+                <th style="min-width: 120px;">備考</th>
+                <th style="min-width: 60px;">領収書</th>
+                
+                <th style="min-width: 100px;">操作</th>
               </tr>
             </thead>
             <tbody id="E-my-reports-list-body">
-              <!-- JSで動的生成 (v2.5.2 グルーピング対応) -->
+              <!-- JSで動的生成 -->
             </tbody>
           </table>
         </div>
+      </div>
+      
+      <div id="E-no-reports-msg" class="text-center mt-3" style="display: none;">
+        <p class="text-muted">日報データはありません。</p>
       </div>
     </div>
 
@@ -636,12 +559,12 @@
                 <input type="number" class="hidden-number-input" id="M-amount" required>
               </div>
 
-              <!-- (vCardFlg: 新規) カード利用チェックボックス -->
+              <!-- (vCardFlg: 新規) カード利用スイッチ (修正済み) -->
               <div class="col-12">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="M-isCard">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" role="switch" id="M-isCard">
                   <label class="form-check-label" for="M-isCard">
-                    会社カード利用
+                    カード利用
                   </label>
                 </div>
               </div>
@@ -1000,9 +923,6 @@
             break;
           case 'view-B-approval-list':
             loadPendingReportsB();
-            break;
-          case 'view-D-expense-summary':
-            loadApprovedExpensesD();
             break;
           case 'view-E-my-reports':
             loadMyReportsE();
@@ -1786,12 +1706,12 @@
     }
 
 
-    // --- (B) チェック・承認待ち一覧機能 (v2.9 修正: アコーディオン) ----------------
+    // --- (B) 承認待ち一覧機能 (修正: アコーディオン廃止・統合) ----------------
 
     function loadPendingReportsB(isBackground) {
       // isBackground=trueの場合はローディング表示なし
       if (!isBackground) {
-        showLoading(true, 'チェック・承認待ち一覧を取得中...');
+        showLoading(true, '承認待ち一覧を取得中...');
       }
       
       google.script.run
@@ -1801,85 +1721,62 @@
         })
         .withFailureHandler(function(e) {
            if (!isBackground) onApiError(e);
-           // バックグラウンドなら静かに失敗する（またはコンソールログのみ）
            else console.error('Pending load failed:', e);
         })
         .getPendingReports(); 
     }
 
     function onLoadPendingReportsSuccessB(data) {
-      // showLoading(false) は呼び出し元で制御
+      // data = { pending: [ ... ] } の形式を想定
+      var listBody = document.getElementById('B-approval-list-body');
+      var badgeEl = document.getElementById('approval-count-badge');
       
-      var checkBody = document.getElementById('B-approval-list-body-check');
-      var approveBody = document.getElementById('B-approval-list-body-approve');
-      var checkCountEl = document.getElementById('B-count-check');
-      var approveCountEl = document.getElementById('B-count-approve');
-      var totalBadge = document.getElementById('approval-count-badge');
+      listBody.innerHTML = '';
       
-      checkBody.innerHTML = '';
-      approveBody.innerHTML = '';
+      var reports = (data && data.pending) ? data.pending : [];
+      var count = reports.length;
       
-      var reportsCheck = (data && data.pendingCheck) ? data.pendingCheck : [];
-      var reportsApprove = (data && data.pendingApproval) ? data.pendingApproval : [];
-      
-      var totalCount = reportsCheck.length + reportsApprove.length;
-      totalBadge.textContent = totalCount > 0 ? totalCount : '';
-      checkCountEl.textContent = reportsCheck.length;
-      approveCountEl.textContent = reportsApprove.length;
+      if (badgeEl) badgeEl.textContent = count > 0 ? count : '';
 
-      if (reportsCheck.length === 0) {
-        checkBody.innerHTML = '<tr><td colspan="4" class="text-center">チェック待ちの日報はありません。</td></tr>';
+      if (reports.length === 0) {
+        listBody.innerHTML = '<tr><td colspan="4" class="text-center">承認待ちの日報はありません。</td></tr>';
       } else {
-        reportsCheck.sort(function(a, b) {
+        // 日付順ソート
+        reports.sort(function(a, b) {
           return (a['日付'] || '').localeCompare(b['日付'] || '');
         });
         
-        reportsCheck.forEach(function(report) {
+        reports.forEach(function(report) {
           var tr = document.createElement('tr');
           tr.onclick = function(e) {
             e.preventDefault();
+            // 詳細画面へ遷移
             loadReportDetailsC(report['日報ID'], 'view-B-approval-list');
           };
+          
+          var statusText = report['承認ステータス'] || '申請中';
+          
+          var statusBadge = '';
+          if (statusText === '申請中') {
+             statusBadge = '<span class="badge bg-primary">承認待ち</span>';
+          } else if (statusText === 'チェック済') {
+             statusBadge = '<span class="badge bg-primary">承認待ち</span>';
+          } else {
+             statusBadge = '<span class="badge bg-secondary">' + statusText + '</span>';
+          }
           
           tr.innerHTML = 
             '<td>' + formatDateWithDay(report['日付'] || '日付不明') + '</td>' +
             '<td>' + (report['担当者'] || '不明') + '</td>' +
-            '<td><span class="text-danger fw-bold">チェック待ち</span></td>' +
+            '<td>' + statusBadge + '</td>' +
             '<td>' + formatNumber(report['合計経費'] || 0) + '</td>';
             
-          checkBody.appendChild(tr);
-        });
-      }
-      
-      if (reportsApprove.length === 0) {
-        approveBody.innerHTML = '<tr><td colspan="4" class="text-center">承認待ちの日報はありません。</td></tr>';
-      } else {
-        reportsApprove.sort(function(a, b) {
-          return (a['日付'] || '').localeCompare(b['日付'] || '');
-        });
-        
-        reportsApprove.forEach(function(report) {
-          var tr = document.createElement('tr');
-          tr.onclick = function(e) {
-            e.preventDefault();
-            loadReportDetailsC(report['日報ID'], 'view-B-approval-list');
-          };
-          
-          var checkStatusDisplay = '<span class="text-success fw-bold">チェック済</span>' + 
-                                   '<br><small>(' + (report['チェック者'] || '不明') + ')</small>';
-          
-          tr.innerHTML = 
-            '<td>' + formatDateWithDay(report['日付'] || '日付不明') + '</td>' +
-            '<td>' + (report['担当者'] || '不明') + '</td>' +
-            '<td>' + checkStatusDisplay + '</td>' +
-            '<td>' + formatNumber(report['合計経費'] || 0) + '</td>';
-            
-          approveBody.appendChild(tr);
+          listBody.appendChild(tr);
         });
       }
     }
 
-    // --- (C) 日報詳細機能 (vNew: カード利用額表示 & 取り下げ) -------------------------------
+    // --- (C) 日報詳細機能 (修正: 承認ボタン統合) -------------------------------
 
     function loadReportDetailsC(reportId, returnViewId) {
       showLoading(true, '日報詳細を取得中...');
@@ -1911,7 +1808,6 @@
       document.getElementById('C-header-mileage').textContent = header['走行距離'] || 0;
       document.getElementById('C-header-total-expense').textContent = formatNumber(header['合計経費'] || 0);
       document.getElementById('C-header-remarks').textContent = header['備考'] || '(備考なし)';
-      // (vPayeeDelete) 支払先ヘッダー削除
       
       document.getElementById('C-header-movement-time').textContent = formatHours(header['移動時間合計 (時間)']);
       document.getElementById('C-header-meeting-time').textContent = formatHours(header['商談時間合計 (時間)']);
@@ -1922,12 +1818,18 @@
       statusBadge.textContent = statusText;
       statusBadge.className = 'badge fs-6'; 
       switch (statusText) {
-        case '申請中': statusBadge.classList.add('bg-primary'); break;
-        case 'チェック済': statusBadge.classList.add('bg-warning', 'text-dark'); break; 
-        case '承認済': statusBadge.classList.add('bg-success'); break;
+        case '申請中': 
+        case 'チェック済':
+          statusBadge.textContent = '承認待ち';
+          statusBadge.classList.add('bg-primary'); 
+          break;
+        case '承認済':
+        case '精算申請済':
+          statusBadge.textContent = '精算申請済';
+          statusBadge.classList.add('bg-info', 'text-dark'); 
+          break;
         case '差戻し': statusBadge.classList.add('bg-danger'); break;
         case '一時保存': statusBadge.classList.add('bg-secondary'); break;
-        case '精算申請済': statusBadge.classList.add('bg-info', 'text-dark'); break;
         default: statusBadge.classList.add('bg-secondary');
       }
       
@@ -1941,8 +1843,7 @@
         reasonWrapper.style.display = 'none';
       }
       
-      document.getElementById('C-history-checker').textContent = header.checker || 'N/A';
-      document.getElementById('C-history-check-date').textContent = header.checkDate ? formatDateTime(header.checkDate) : 'N/A';
+      // 承認履歴：承認者のみ表示
       document.getElementById('C-history-approver').textContent = header.approver || 'N/A';
       document.getElementById('C-history-approve-date').textContent = header.approveDate ? formatDateTime(header.approveDate) : 'N/A';
 
@@ -1964,7 +1865,7 @@
         actBody.innerHTML = '<tr><td colspan="3">行動明細はありません。</td></tr>';
       }
       
-      // 経費明細 (vNew: カード金額列追加)
+      // 経費明細
       var expBody = document.getElementById('C-expenses-body');
       expBody.innerHTML = '';
       if (expenses && expenses.length > 0) {
@@ -1992,7 +1893,6 @@
             taxRateDisplay = ex.taxRate + '%';
           }
           
-          // (vNew) カード金額表示
           var cardDisplay = (ex.cardAmount > 0) ? formatNumber(ex.cardAmount) : '-';
           
           expBody.innerHTML += 
@@ -2001,9 +1901,9 @@
               '<td>' + useDate + '</td>' +
               '<td>' + (ex.itemName || '不明な項目') + '</td>' +
               '<td>' + formatNumber(ex.amount || 0) + '</td>' +
-              '<td>' + (ex.payee || '') + '</td>' + // 支払先
-              '<td>' + (ex.isCard ? 'あり' : 'なし') + '</td>' + // カード利用
-              '<td>' + cardDisplay + '</td>' + // 課長用
+              '<td>' + (ex.payee || '') + '</td>' + 
+              '<td>' + (ex.isCard ? 'あり' : 'なし') + '</td>' + 
+              '<td>' + cardDisplay + '</td>' + 
               '<td>' + areaName + '</td>' +
               '<td>' + formatNumber(ex.taxExcludedAmount || 0) + '</td>' +
               '<td>' + taxRateDisplay + '</td>' +
@@ -2024,43 +1924,31 @@
         btn.remove();
       });
 
-      var buttonsHtml = '';
-      
-      if (IS_CHECKER && statusText === '申請中' && viewC_ReturnView === 'view-B-approval-list') {
-        buttonsHtml += 
-          '<button class="btn btn-danger btn-lg" onclick="handleRejectC()">' +
-            '<i class="bi bi-x-circle"></i> 差戻し' +
-          '</button>' +
-          '<button class="btn btn-success btn-lg ms-3" onclick="handleCheckC()">' + 
-            '<i class="bi bi-check-circle"></i> チェック完了' +
-          '</button>';
-      } 
-      else if (IS_APPROVER && statusText === 'チェック済' && viewC_ReturnView === 'view-B-approval-list') {
-        buttonsHtml += 
+      // 権限がある(IS_CHECKER or IS_APPROVER) かつ 
+      // ステータスが「申請中」であれば、承認ボタンを表示する
+      // ※「チェック済」という過去のデータが残っていた場合も承認できるようにしておく
+      if ((IS_CHECKER || IS_APPROVER) && (statusText === '申請中' || statusText === 'チェック済') && viewC_ReturnView === 'view-B-approval-list') {
+        var buttonsHtml = 
           '<button class="btn btn-danger btn-lg" onclick="handleRejectC()">' +
             '<i class="bi bi-x-circle"></i> 差戻し' +
           '</button>' +
           '<button class="btn btn-success btn-lg ms-3" onclick="handleApproveC()">' +
-            '<i class="bi bi-check-circle"></i> 承認する' +
+            '<i class="bi bi-check-circle"></i> 承認（精算申請）' +
           '</button>';
-      }
-
-      if (buttonsHtml) {
+          
         approvalButtonsWrapper.insertAdjacentHTML('beforeend', buttonsHtml);
         approvalButtonsWrapper.style.display = 'block';
       }
-      
-      // --- (vNew) 取り下げボタンの表示制御 ---
+
+      // --- 取り下げボタン ---
       var withdrawContainer = document.getElementById('C-withdraw-button-container');
-      withdrawContainer.innerHTML = ''; // クリア
+      withdrawContainer.innerHTML = ''; 
       
-      // 自分の申請であり、かつ「申請中」であれば表示
-      // 申請者IDと比較 (EMPLOYEE_INFO.id は数値の場合もあるのでString変換)
       if (String(header['申請者社員番号']) === String(EMPLOYEE_INFO.id) && statusText === '申請中') {
         var withdrawBtn = document.createElement('button');
         withdrawBtn.className = 'btn btn-outline-danger';
-        // (vNew) テキスト追加
-        withdrawBtn.innerHTML = '<i class="bi bi-reply"></i> 申請取り下げ';
+        // (vNew: Icon & Text Change)
+        withdrawBtn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i> 取り下げ';
         withdrawBtn.onclick = handleWithdrawC;
         withdrawContainer.appendChild(withdrawBtn);
       }
@@ -2075,14 +1963,13 @@
       var reportId = document.getElementById('C-reportId').value;
       if (!reportId) return;
       
-      showCustomAlert('この申請を取り下げて「一時保存」に戻しますか？\n（チェック・承認待ちはキャンセルされます）', function() {
+      showCustomAlert('この申請を取り下げて「一時保存」に戻しますか？', function() {
         showLoading(true, '申請を取り下げ中...');
         google.script.run
           .withSuccessHandler(function(result) {
             showLoading(false);
             if (result.status === 'success') {
               showCustomAlert(result.message, function() {
-                // 一覧に戻る
                 loadMyReportsE();
                 showView('view-E-my-reports');
               });
@@ -2095,9 +1982,6 @@
       });
     }
 
-    /**
-     * (vNew) 日報一覧からの取り下げ用
-     */
     function handleWithdrawE(reportId) {
       if (!reportId) return;
       
@@ -2108,7 +1992,6 @@
             showLoading(false);
             if (result.status === 'success') {
               showCustomAlert(result.message, function() {
-                // 一覧をリロード
                 loadMyReportsE();
               });
             } else {
@@ -2120,30 +2003,15 @@
       });
     }
 
-    function handleCheckC() {
-      var reportId = document.getElementById('C-reportId').value;
-      if (!reportId) return;
-      
-      showCustomAlert('この日報を「チェック済」にします。よろしいですか？', function() {
-        showLoading(true, 'チェック処理中...');
-        google.script.run
-          .withSuccessHandler(function(result) {
-            showLoading(false);
-            showCustomAlert(result.message, function() {
-              showView('view-B-approval-list');
-            });
-          })
-          .withFailureHandler(onApiError)
-          .checkReport(reportId); 
-      });
-    }
-
+    /**
+     * (修正) 承認処理：「承認して精算申請します」
+     */
     function handleApproveC() {
       var reportId = document.getElementById('C-reportId').value;
       if (!reportId) return;
       
-      showCustomAlert('この日報を「承認済」にします。よろしいですか？', function() {
-        showLoading(true, '承認処理中...');
+      showCustomAlert('この日報を承認し、経理へ精算申請を送信します。\nよろしいですか？', function() {
+        showLoading(true, '承認・連携処理中...');
         google.script.run
           .withSuccessHandler(function(result) {
             showLoading(false);
@@ -2178,110 +2046,8 @@
       });
     }
 
-    // --- (D) 経費精算まとめ機能 ----------------------------------------
 
-    function loadApprovedExpensesD() {
-      showLoading(true, '精算可能な経費を取得中...');
-      google.script.run
-        .withSuccessHandler(onLoadApprovedExpensesSuccessD)
-        .withFailureHandler(onApiError)
-        .getApprovedExpenses();
-    }
-    
-    function onLoadApprovedExpensesSuccessD(data) {
-      showLoading(false);
-      var tbody = document.getElementById('D-expense-list-body');
-      tbody.innerHTML = '';
-      
-      var reports = (data && data.reports) ? data.reports : [];
-      var expenses = (data && data.expenses) ? data.expenses : [];
-      
-      if (reports.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center">精算対象の「承認済」日報はありません。</td></tr>';
-        updateTotalSelectedAmountD();
-        return;
-      }
-      
-      reports.sort(function(a, b) {
-        return (a['日付'] || '').localeCompare(b['日付'] || '');
-      });
-
-      var expensesMap = {};
-      expenses.forEach(function(ex) {
-        var rId = ex['日報ID'];
-        if (!expensesMap[rId]) {
-          expensesMap[rId] = [];
-        }
-        expensesMap[rId].push(ex.itemName + ': ' + formatNumber(ex['金額']) + '円');
-      });
-
-      reports.forEach(function(report) {
-        var tr = document.createElement('tr');
-        var reportId = report['日報ID'];
-        var totalExpense = parseFloat(report['合計経費']) || 0;
-        var date = report['日付'];
-        
-        var expenseDetails = (expensesMap[reportId] || []).join('<br>');
-        
-        tr.innerHTML = 
-          '<td>' +
-            '<input class="form-check-input D-checkbox" type="checkbox" ' +
-                    'value="' + reportId + '" ' +
-                    'data-amount="' + totalExpense + '" ' +
-                    'onchange="updateTotalSelectedAmountD()">' +
-          '</td>' +
-          '<td>' + date + '</td>' +
-          '<td>' + formatNumber(totalExpense) + '</td>' +
-          '<td><small>' + (expenseDetails || '(経費なし)') + '</small></td>' +
-          '<td><small>' + String(reportId).substring(0, 8) + '...</small></td>';
-        tbody.appendChild(tr);
-      });
-      
-      updateTotalSelectedAmountD();
-    }
-
-    function toggleAllCheckboxesD(checked) {
-      document.querySelectorAll('.D-checkbox').forEach(function(cb) {
-        cb.checked = checked;
-      });
-      updateTotalSelectedAmountD();
-    }
-    
-    function updateTotalSelectedAmountD() {
-      var total = 0;
-      document.querySelectorAll('.D-checkbox:checked').forEach(function(cb) {
-        total += parseFloat(cb.dataset.amount) || 0;
-      });
-      document.getElementById('D-total-selected-amount').textContent = formatNumber(total) + ' 円';
-    }
-    
-    function submitFinalExpensesD() {
-      var selectedIds = [];
-      document.querySelectorAll('.D-checkbox:checked').forEach(function(cb) {
-        selectedIds.push(cb.value);
-      });
-      
-      if (selectedIds.length === 0) {
-        showCustomAlert('精算申請する日報を選択してください。');
-        return;
-      }
-      
-      var confirmMessage = '選択した ' + selectedIds.length + ' 件の日報を経理に精算申請します。\nよろしいですか？';
-      showCustomAlert(confirmMessage, function() {
-        showLoading(true, '精算申請を送信中...');
-        google.script.run
-          .withSuccessHandler(function(result) {
-            showLoading(false);
-            showCustomAlert(result.message, function() {
-              loadApprovedExpensesD();
-            });
-          })
-          .withFailureHandler(onApiError)
-          .submitFinalExpenses(selectedIds);
-      });
-    }
-
-    // --- (E) 日報一覧機能 (v2.5.2 修正: グルーピング表示) ---------------------
+    // --- (E) 日報一覧機能 (修正: テーブル形式・セル結合表示) ---------------------
 
     function loadMyReportsE() {
       showLoading(true, '日報一覧を取得中...');
@@ -2294,68 +2060,156 @@
     function onLoadMyReportsSuccessE(reports) {
       showLoading(false);
       var tbody = document.getElementById('E-my-reports-list-body');
+      var noReportsMsg = document.getElementById('E-no-reports-msg');
+      
       tbody.innerHTML = '';
 
       if (!reports || reports.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center">日報データはありません。</td></tr>';
+        noReportsMsg.style.display = 'block';
         return;
       }
+      noReportsMsg.style.display = 'none';
+      
+      // 日付順にソート (降順)
+      reports.sort(function(a, b) {
+        var statusOrder = {
+          '一時保存': 1,
+          '差戻し': 2,
+          '申請中': 3,
+          '承認済': 4,
+          '精算申請済': 5
+        };
+        
+        var sA = statusOrder[a['承認ステータス']] || 99;
+        var sB = statusOrder[b['承認ステータス']] || 99;
+        
+        if (sA !== sB) return sA - sB;
+        return (b['日付'] || '').localeCompare(a['日付'] || '');
+      });
       
       var currentStatus = '';
       
       reports.forEach(function(report) {
         var rId = report['日報ID'];
         var status = report['承認ステータス'];
+        var date = report['日付'] ? formatDateWithDay(report['日付']) : '日付なし';
+        var total = formatNumber(report['合計経費']);
+        var remarks = report['備考'] || '';
+        var expenses = report['expenses'] || []; // 経費リスト
         
+        // ステータスヘッダー行
         if (status !== currentStatus) {
           currentStatus = status;
-          var headerRow = document.createElement('tr');
-          headerRow.className = 'table-group-divider table-light';
-          headerRow.innerHTML = '<td colspan="5" class="fw-bold text-center p-2">' + status + '</td>';
-          tbody.appendChild(headerRow);
+          var groupTr = document.createElement('tr');
+          groupTr.innerHTML = '<td colspan="10" class="status-group-header">' + currentStatus + '</td>';
+          tbody.appendChild(groupTr);
         }
         
         var statusBadge = '';
+        var badgeClass = 'bg-secondary';
+        var statusLabel = status;
+        
         switch (status) {
-          case '申請中': statusBadge = '<span class="badge bg-primary">申請中</span>'; break;
-          case 'チェック済': statusBadge = '<span class="badge bg-warning text-dark">チェック済</span>'; break; 
-          case '承認済': statusBadge = '<span class="badge bg-success">承認済</span>'; break;
-          case '差戻し': statusBadge = '<span class="badge bg-danger">差戻し</span>'; break;
-          case '一時保存': statusBadge = '<span class="badge bg-secondary">一時保存</span>'; break;
-          case '精算申請済': statusBadge = '<span class="badge bg-info text-dark">精算申請済</span>'; break;
-          default: statusBadge = '<span class="badge bg-secondary">' + status + '</span>';
+          case '申請中': badgeClass = 'bg-primary'; statusLabel = '申請中'; break;
+          case 'チェック済': badgeClass = 'bg-warning text-dark'; statusLabel = '承認待ち'; break; 
+          case '承認済': 
+          case '精算申請済': badgeClass = 'bg-info text-dark'; statusLabel = '精算申請済'; break;
+          case '差戻し': badgeClass = 'bg-danger'; statusLabel = '差戻し'; break;
+          case '一時保存': badgeClass = 'bg-warning text-dark'; statusLabel = '一時保存'; break; 
+        }
+        statusBadge = '<span class="badge ' + badgeClass + '">' + statusLabel + '</span>';
+
+        // 操作ボタン
+        var actionButtons = '';
+        if (status === '一時保存' || status === '差戻し') {
+          actionButtons = '<button class="btn btn-sm btn-primary text-nowrap" onclick="handleEditReportE(\'' + rId + '\')"><i class="bi bi-pencil"></i> 編集</button>';
+        } else {
+          actionButtons = '<button class="btn btn-sm btn-outline-secondary text-nowrap" onclick="loadReportDetailsC(\'' + rId + '\', \'view-E-my-reports\')"><i class="bi bi-eye"></i> 表示</button>';
+        }
+        if (status === '申請中') {
+          // (vNew: Icon & Text Change)
+          actionButtons += '<br><button class="btn btn-sm btn-outline-danger mt-1 text-nowrap" onclick="handleWithdrawE(\'' + rId + '\')"><i class="bi bi-arrow-counterclockwise"></i> 取り下げ</button>';
         }
 
-        var buttons = '';
-        if (status === '一時保存' || status === '差戻し') {
-          buttons = '<button class="btn btn-sm btn-primary" onclick="handleEditReportE(\'' + rId + '\')"><i class="bi bi-pencil"></i> 編集</button>';
-        } else {
-          buttons = '<button class="btn btn-sm btn-outline-secondary" onclick="loadReportDetailsC(\'' + rId + '\', \'view-E-my-reports\')"><i class="bi bi-eye"></i> 表示</button>';
-        }
+        // 経費行の生成
+        var rowCount = Math.max(1, expenses.length);
         
-        // (vNew) 申請中の場合、リストにも取り下げボタンを表示
-        if (status === '申請中') {
-          // (vNew) テキスト追加
-          buttons += ' <button class="btn btn-sm btn-outline-danger ms-1" onclick="handleWithdrawE(\'' + rId + '\')"><i class="bi bi-reply"></i> 申請取り下げ</button>';
-        }
-        
-        var tr = document.createElement('tr');
-        tr.innerHTML = 
-          '<td>' + (report['日付'] || '') + '</td>' +
-          '<td>' + statusBadge + '</td>' +
-          '<td>' + formatNumber(report['合計経費']) + '</td>' +
-          '<td><small>' + (report['備考'] || '') + '</small></td>' +
-          '<td>' + buttons + '</td>';
-        
-        tr.addEventListener('click', function(e) {
-          if (!e.target.closest('button')) {
-            loadReportDetailsC(rId, 'view-E-my-reports');
+        for (var i = 0; i < rowCount; i++) {
+          var tr = document.createElement('tr');
+          
+          // 日報共通情報 (1行目のみ表示、rowspan)
+          if (i === 0) {
+            // 申請日 (ここでは日報の日付を使用)
+            var tdDate = document.createElement('td');
+            tdDate.rowSpan = rowCount;
+            tdDate.textContent = date;
+            tr.appendChild(tdDate);
+            
+            // ステータス
+            var tdStatus = document.createElement('td');
+            tdStatus.rowSpan = rowCount;
+            tdStatus.className = "text-center";
+            tdStatus.innerHTML = statusBadge;
+            tr.appendChild(tdStatus);
+            
+            // 件名 (備考)
+            var tdSubject = document.createElement('td');
+            tdSubject.rowSpan = rowCount;
+            tdSubject.textContent = remarks;
+            tr.appendChild(tdSubject);
+            
+            // 合計経費
+            var tdTotal = document.createElement('td');
+            tdTotal.rowSpan = rowCount;
+            tdTotal.className = "text-end fw-bold";
+            tdTotal.textContent = total;
+            tr.appendChild(tdTotal);
           }
-        });
-        
-        tbody.appendChild(tr);
+          
+          // 経費詳細情報
+          if (expenses[i]) {
+            var exp = expenses[i];
+            
+            // 利用日：表記揺れや型に対応
+            var rawDate = exp.useDate;
+            var useDate = '-';
+            if (rawDate) {
+              // 文字列化してT以降(時間)をカット、ハイフンをスラッシュに統一
+              var dateStr = String(rawDate).split('T')[0]; 
+              useDate = dateStr.replace(/-/g, '/');
+            }
+            
+            tr.innerHTML += '<td>' + useDate + '</td>';
+            tr.innerHTML += '<td>' + (exp.itemName || '') + '</td>';
+            tr.innerHTML += '<td class="text-end">' + formatNumber(exp.amount) + '</td>';
+            tr.innerHTML += '<td>' + (exp.remarks || '') + '</td>';
+            
+            // 領収書 (まだURLがない想定なので仮置き)
+            var receiptLink = '-';
+            // Code.gs更新待ち: receiptUrl
+            // if (exp.receiptUrl) { ... }
+            tr.innerHTML += '<td class="text-center">' + receiptLink + '</td>';
+            
+          } else {
+            // 経費なしの場合の空セル
+            tr.innerHTML += '<td>-</td><td>-</td><td>0</td><td>-</td><td>-</td>';
+          }
+          
+          // 操作ボタン (1行目のみ、rowspan)
+          if (i === 0) {
+            var tdAction = document.createElement('td');
+            tdAction.rowSpan = rowCount;
+            tdAction.className = "text-center";
+            tdAction.innerHTML = actionButtons;
+            tr.appendChild(tdAction);
+          }
+          
+          tbody.appendChild(tr);
+        }
       });
     }
+    
+    // --- (以下、共通関数等は変更なし) ---
     
     function handleEditReportE(reportId) {
       showCustomAlert('この日報データを編集します。入力中の内容は破棄されますが、よろしいですか？', function() {
@@ -2391,7 +2245,6 @@
       document.getElementById('A-reportId').value = h['日報ID'] || '';
       document.getElementById('A-date').value = h['日付'] ? h['日付'].replace(/\//g, '-') : getTodayString();
       document.getElementById('A-remarks').value = h['備考'] || '';
-      // (vPayeeDelete) 支払先リセットなし
       document.getElementById('A-startMeter').value = h['始時メーター'] || '';
       document.getElementById('A-endMeter').value = h['終時メーター'] || '';
       
@@ -2486,7 +2339,6 @@
     function initializeKanmaInputsA() {
       document.getElementById('M-amount-display-input').addEventListener('input', formatKanmaInputA);
       document.getElementById('M-amount-excluding-tax-display-input').addEventListener('input', formatKanmaInputA);
-      // (vNew) カード金額のカンマ入力
       document.getElementById('M-cardAmount-display-input').addEventListener('input', formatKanmaInputA);
     }
     
