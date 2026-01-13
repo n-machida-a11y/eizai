@@ -407,9 +407,8 @@
       </div>
 
       <!-- 承認/差戻しボタン -->
-      <div id="C-approval-buttons" class="text-center" style="display: none;">
-        <input type="hidden" id="C-reportId">
-      </div>
+      <div id="C-approval-buttons" class="text-center" style="display: none;"></div>
+      <input type="hidden" id="C-reportId">
 
     </div>
 
@@ -467,9 +466,7 @@
                 
                 <th style="min-width: 90px;">利用日</th>
                 <th style="min-width: 100px;">経費項目</th>
-                <th style="min-width: 100px;">支払先</th>
-                <th style="min-width: 100px;">金額<br>(円)</th>
-                <th style="min-width: 80px;">精算方法</th>
+                <th style="min-width: 100px;">経費詳細<br>(円)</th>
                 <th style="min-width: 120px;">備考</th>
                 <th style="min-width: 60px;">領収書</th>
                 
@@ -1193,19 +1190,24 @@
         var arr = d.pending || [];
         var badge = document.getElementById('approval-count-badge');
         if (badge) badge.innerText = arr.length || '';
-        if (arr.length === 0) list.innerHTML = '<tr><td colspan="4" class="text-center">なし</td></tr>';
-        else {
+        
+        if (arr.length === 0) {
+          list.innerHTML = '<tr><td colspan="4" class="text-center">なし</td></tr>';
+        } else {
           arr.sort(function(a,b){ return (a['日付']||'').localeCompare(b['日付']||''); });
           
-          // 修正箇所: createElementを使わず、HTML文字列としてonclickを埋め込む
           var rowsHtml = '';
           arr.forEach(function(r) {
              var rid = r['日報ID'];
              var date = formatDateWithDay(r['日付']);
-             var person = r['担当者'];
+             var person = r['担当者'] || r['氏名'] || r['申請者'] || r['社員名'] || '-';
              var cost = formatNumber(r['合計経費']);
              
-             rowsHtml += '<tr onclick="loadReportDetailsC(\'' + rid + '\', \'view-B-approval-list\')">' +
+             // エスケープ処理（簡易的）
+             var safeRid = rid ? rid.replace(/'/g, "\\'") : '';
+
+             // onclickで直接関数を呼び出す（確実な方法）
+             rowsHtml += '<tr style="cursor: pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' +
                 '<td>' + date + '</td>' +
                 '<td>' + person + '</td>' +
                 '<td><span class="badge bg-primary">承認待ち</span></td>' +
@@ -1219,41 +1221,81 @@
     }
 
     function loadReportDetailsC(rid, backView) {
+      if(!rid) {
+          onApiError('日報IDが指定されていません。');
+          return;
+      }
       showLoading(true);
       viewC_ReturnView = backView;
       google.script.run.withSuccessHandler(function(d){
-        showLoading(false);
-        // エラーハンドリング追加
-        if (!d || !d.header || !d.header['日報ID']) {
-            onApiError('日報データの取得に失敗しました。データが存在しない可能性があります。');
-            return;
-        }
-        
-        var h = d.header;
-        document.getElementById('C-header-date').innerText = formatDateWithDay(h['日付']);
-        document.getElementById('C-header-applicant').innerText = h['担当者'];
-        document.getElementById('C-header-total-expense').innerText = formatNumber(h['合計経費']);
-        document.getElementById('C-header-status-badge').innerText = h['承認ステータス'];
-        
-        var expBody = document.getElementById('C-expenses-body');
-        expBody.innerHTML = '';
-        if (d.expenses && d.expenses.length > 0) {
-           d.expenses.forEach(function(ex) {
-             var urlLink = ex.receiptUrl ? '<a href="'+ex.receiptUrl+'" target="_blank"><i class="bi bi-link-45deg"></i></a>' : '-';
-             expBody.innerHTML += '<tr><td>'+ex.timeSlot+'</td><td>'+formatDateWithDay(ex.useDate)+'</td><td>'+ex.itemName+'</td><td>'+ex.payee+'</td><td>'+formatNumber(ex.amount)+'</td><td>'+(ex.method||'仮払金')+'</td><td>'+formatNumber(ex.cardAmount)+'</td><td>'+(ex.isCard?'あり':'')+'</td><td>'+formatNumber(ex.reimburseAmount)+'</td><td>'+ex.areaCode+'</td><td>'+ex.remarks+'</td><td>'+urlLink+'</td></tr>';
-           });
-        } else expBody.innerHTML = '<tr><td colspan="12">なし</td></tr>';
+        try {
+            if (!d || !d.header || !d.header['日報ID']) {
+                throw new Error('日報データの取得に失敗しました。データが存在しない可能性があります。');
+            }
+            
+            var h = d.header;
+            document.getElementById('C-header-date').innerText = formatDateWithDay(h['日付']);
+            document.getElementById('C-header-applicant').innerText = h['担当者'] || h['氏名'] || h['申請者'] || h['社員名'] || '-';
+            document.getElementById('C-header-total-expense').innerText = formatNumber(h['合計経費']);
+            document.getElementById('C-header-status-badge').innerText = h['承認ステータス'];
+            document.getElementById('C-header-apply-date').innerText = formatDateTime(h['申請日'] || h['作成日']);
+            document.getElementById('C-header-mileage').innerText = h['本日の走行距離'] || h['走行距離'] || '0';
+            document.getElementById('C-header-movement-time').innerText = formatHours(h['移動時間合計']);
+            document.getElementById('C-header-meeting-time').innerText = formatHours(h['商談時間合計']);
+            document.getElementById('C-header-remarks').innerText = h['備考'] || '';
+            
+            var rejReason = h['差戻し理由'];
+            if (rejReason) {
+                document.getElementById('C-rejection-reason').innerText = rejReason;
+                document.getElementById('C-rejection-reason-wrapper').style.display = 'block';
+            } else {
+                document.getElementById('C-rejection-reason-wrapper').style.display = 'none';
+            }
 
-        var btnArea = document.getElementById('C-approval-buttons');
-        btnArea.style.display = 'none'; btnArea.innerHTML = '';
-        document.getElementById('C-reportId').value = h['日報ID'];
-        
-        if ((IS_CHECKER || IS_APPROVER) && backView === 'view-B-approval-list' && ['申請中','1次承認済','チェック済'].includes(h['承認ステータス'])) {
-           btnArea.innerHTML = '<button class="btn btn-danger me-2" onclick="handleRejectC()">差戻し</button><button class="btn btn-success" onclick="handleApproveC()">承認</button>';
-           btnArea.style.display = 'block';
+            var histApprover = h['承認者'] || h['チェック者'] || 'N/A';
+            var histDate = h['承認日時'] || h['チェック日時'] || 'N/A';
+            document.getElementById('C-history-approver').innerText = histApprover;
+            document.getElementById('C-history-approve-date').innerText = formatDateTime(histDate);
+            
+            var actBody = document.getElementById('C-activities-body');
+            actBody.innerHTML = '';
+            if (d.activities && d.activities.length > 0) {
+                d.activities.sort(function(a,b){ return (a['開始時刻']||'').localeCompare(b['開始時刻']||''); });
+                d.activities.forEach(function(act) {
+                    var range = (act['開始時刻']||'') + ' 〜 ' + (act['終了時刻']||'');
+                    actBody.innerHTML += '<tr><td>'+range+'</td><td>'+(act['活動区分']||'')+'</td><td>'+(act['活動内容']||'')+'</td></tr>';
+                });
+            } else {
+                actBody.innerHTML = '<tr><td colspan="3">なし</td></tr>';
+            }
+
+            var expBody = document.getElementById('C-expenses-body');
+            expBody.innerHTML = '';
+            if (d.expenses && d.expenses.length > 0) {
+               d.expenses.forEach(function(ex) {
+                 var urlLink = ex.receiptUrl ? '<a href="'+ex.receiptUrl+'" target="_blank"><i class="bi bi-link-45deg"></i></a>' : '-';
+                 expBody.innerHTML += '<tr><td>'+ex.timeSlot+'</td><td>'+formatDateWithDay(ex.useDate)+'</td><td>'+ex.itemName+'</td><td>'+ex.payee+'</td><td>'+formatNumber(ex.amount)+'</td><td>'+(ex.method||'仮払金')+'</td><td>'+formatNumber(ex.cardAmount)+'</td><td>'+(ex.isCard?'あり':'')+'</td><td>'+formatNumber(ex.reimburseAmount)+'</td><td>'+ex.areaCode+'</td><td>'+ex.remarks+'</td><td>'+urlLink+'</td></tr>';
+               });
+            } else expBody.innerHTML = '<tr><td colspan="12">なし</td></tr>';
+
+            var btnArea = document.getElementById('C-approval-buttons');
+            btnArea.style.display = 'none'; btnArea.innerHTML = '';
+            document.getElementById('C-reportId').value = h['日報ID'];
+            
+            if ((IS_CHECKER || IS_APPROVER) && backView === 'view-B-approval-list' && ['申請中','1次承認済','チェック済'].includes(h['承認ステータス'])) {
+               btnArea.innerHTML = '<button class="btn btn-danger me-2" onclick="handleRejectC()">差戻し</button><button class="btn btn-success" onclick="handleApproveC()">承認</button>';
+               btnArea.style.display = 'block';
+            }
+            showView('view-C-report-detail');
+        } catch (e) {
+            onApiError(e);
+        } finally {
+            showLoading(false);
         }
-        showView('view-C-report-detail');
-      }).withFailureHandler(onApiError).getReportDetails(rid);
+      }).withFailureHandler(function(e) {
+          showLoading(false);
+          onApiError(e);
+      }).getReportDetails(rid);
     }
     
     function handleApproveC() {
@@ -1282,26 +1324,159 @@
     function filterReportsE() {
       var list = document.getElementById('E-my-reports-list-body');
       list.innerHTML = '';
-      if (allMyReportsCache.length === 0) { document.getElementById('E-no-reports-msg').style.display = 'block'; return; }
+      
+      // 1. フィルタリング
+      var dateFrom = document.getElementById('S-date-from').value;
+      var dateTo = document.getElementById('S-date-to').value;
+      var amtMin = parseFloat(document.getElementById('S-amount-min').value) || null;
+      var amtMax = parseFloat(document.getElementById('S-amount-max').value) || null;
+      var keyword = document.getElementById('S-keyword').value.toLowerCase().trim();
+
+      var filteredReports = allMyReportsCache.filter(function(r) {
+         if (dateFrom && r['日付'] < dateFrom.replace(/-/g,'/')) return false;
+         if (dateTo && r['日付'] > dateTo.replace(/-/g,'/')) return false;
+         
+         var total = parseFloat(r['合計経費']);
+         if (amtMin !== null && total < amtMin) return false;
+         if (amtMax !== null && total > amtMax) return false;
+         
+         if (keyword) {
+            var searchStr = (r['備考']||'') + ' ' + (r['日付']||'') + ' ' + (r['承認ステータス']||'');
+            if (r.expenses) {
+               r.expenses.forEach(function(ex) {
+                  searchStr += ' ' + (ex.itemName||'') + ' ' + (ex.payee||'') + ' ' + (ex.remarks||'');
+               });
+            }
+            if (searchStr.toLowerCase().indexOf(keyword) === -1) return false;
+         }
+         return true;
+      });
+
+      if (filteredReports.length === 0) { document.getElementById('E-no-reports-msg').style.display = 'block'; return; }
       document.getElementById('E-no-reports-msg').style.display = 'none';
       
-      allMyReportsCache.forEach(function(r) {
-        var rowCount = Math.max(1, r.expenses.length);
-        for(var i=0; i<rowCount; i++) {
+      // 2. ソート (提示コードのロジック: ステータス順 -> 日付降順)
+      filteredReports.sort(function(a, b) {
+        var statusOrder = { '一時保存': 1, '差戻し': 2, '申請中': 3, '承認済': 4, '精算申請済': 5 };
+        var sA = statusOrder[a['承認ステータス']] || 99;
+        var sB = statusOrder[b['承認ステータス']] || 99;
+        if (sA !== sB) return sA - sB;
+        return (b['日付']||'').localeCompare(a['日付']||'');
+      });
+
+      // 3. 描画 (rowspan あり)
+      var currentStatus = '';
+      
+      filteredReports.forEach(function(r) {
+        var rId = r['日報ID'];
+        var status = r['承認ステータス'];
+        var date = r['日付'] ? formatDateWithDay(r['日付']) : '日付なし';
+        var total = formatNumber(r['合計経費']);
+        var remarks = r['備考'] || '';
+        var expenses = r['expenses'] || []; 
+        
+        // ステータスヘッダー行
+        if (status !== currentStatus) {
+          currentStatus = status;
+          var groupTr = document.createElement('tr');
+          groupTr.innerHTML = '<td colspan="10" class="status-group-header">' + currentStatus + '</td>';
+          list.appendChild(groupTr);
+        }
+        
+        var statusBadge = '';
+        var badgeClass = 'bg-secondary';
+        var statusLabel = status;
+        
+        switch (status) {
+          case '申請中': badgeClass = 'bg-primary'; statusLabel = '申請中'; break;
+          case 'チェック済': badgeClass = 'bg-warning text-dark'; statusLabel = '承認待ち'; break; 
+          case '承認済': 
+          case '精算申請済': badgeClass = 'bg-info text-dark'; statusLabel = '精算申請済'; break;
+          case '差戻し': badgeClass = 'bg-danger'; statusLabel = '差戻し'; break;
+          case '一時保存': badgeClass = 'bg-warning text-dark'; statusLabel = '一時保存'; break; 
+        }
+        statusBadge = '<span class="badge ' + badgeClass + '">' + statusLabel + '</span>';
+
+        // 操作ボタン
+        var actionButtons = '';
+        if (status === '一時保存' || status === '差戻し') {
+          actionButtons = '<button class="btn btn-sm btn-primary text-nowrap" onclick="handleEditReportE(\'' + rId + '\')"><i class="bi bi-pencil"></i> 編集</button>';
+        } else {
+          actionButtons = '<button class="btn btn-sm btn-outline-secondary text-nowrap" onclick="loadReportDetailsC(\'' + rId + '\', \'view-E-my-reports\')"><i class="bi bi-eye"></i> 表示</button>';
+        }
+        if (status === '申請中') {
+          actionButtons += '<br><button class="btn btn-sm btn-outline-danger mt-1 text-nowrap" onclick="handleWithdrawE(\'' + rId + '\')"><i class="bi bi-arrow-counterclockwise"></i> 取り下げ</button>';
+        }
+
+        var rowCount = Math.max(1, expenses.length);
+        
+        for (var i = 0; i < rowCount; i++) {
           var tr = document.createElement('tr');
-          if (i===0) {
-             tr.innerHTML += '<td rowspan="'+rowCount+'">'+formatDateWithDay(r['日付'])+'</td><td rowspan="'+rowCount+'">'+r['承認ステータス']+'</td><td rowspan="'+rowCount+'">'+r['備考']+'</td><td rowspan="'+rowCount+'" class="text-end fw-bold">'+formatNumber(r['合計経費'])+'</td>';
-          }
-          var ex = r.expenses[i];
-          if (ex) {
-             var link = ex.receiptUrl ? '<i class="bi bi-paperclip"></i>' : '-';
-             tr.innerHTML += '<td>'+formatDateWithDay(ex.useDate)+'</td><td>'+ex.itemName+'</td><td>'+ex.payee+'</td><td class="text-end">'+formatNumber(ex.amount)+'</td><td>'+(ex.method||'仮払金')+'</td><td>'+ex.remarks+'</td><td class="text-center">'+link+'</td>';
-          } else { tr.innerHTML += '<td colspan="7">-</td>'; }
           
-          if (i===0) {
-             var btns = (r['承認ステータス']==='一時保存'||r['承認ステータス']==='差戻し') ? '<button class="btn btn-sm btn-primary" onclick="handleEditReportE(\''+r['日報ID']+'\')">編集</button>' : '<button class="btn btn-sm btn-secondary" onclick="loadReportDetailsC(\''+r['日報ID']+'\', \'view-E-my-reports\')">表示</button>';
-             tr.innerHTML += '<td rowspan="'+rowCount+'" class="text-center">'+btns+'</td>';
+          if (i === 0) {
+            // 申請日
+            var tdDate = document.createElement('td');
+            tdDate.rowSpan = rowCount;
+            tdDate.textContent = date;
+            tr.appendChild(tdDate);
+            
+            // ステータス
+            var tdStatus = document.createElement('td');
+            tdStatus.rowSpan = rowCount;
+            tdStatus.className = "text-center";
+            tdStatus.innerHTML = statusBadge;
+            tr.appendChild(tdStatus);
+            
+            // 件名 (備考)
+            var tdSubject = document.createElement('td');
+            tdSubject.rowSpan = rowCount;
+            tdSubject.textContent = remarks;
+            tr.appendChild(tdSubject);
+            
+            // 合計経費
+            var tdTotal = document.createElement('td');
+            tdTotal.rowSpan = rowCount;
+            tdTotal.className = "text-end fw-bold";
+            tdTotal.textContent = total;
+            tr.appendChild(tdTotal);
           }
+          
+          if (expenses[i]) {
+            var exp = expenses[i];
+            var rawDate = exp.useDate;
+            var useDate = '-';
+            if (rawDate) {
+              var dateStr = String(rawDate).split('T')[0]; 
+              useDate = dateStr.replace(/-/g, '/');
+            }
+            
+            // 領収書リンク
+            var receiptLink = '-';
+            if (exp.receiptUrl) {
+                receiptLink = '<a href="' + exp.receiptUrl + '" target="_blank"><i class="bi bi-paperclip"></i></a>';
+            }
+
+            tr.innerHTML += '<td>' + useDate + '</td>';
+            tr.innerHTML += '<td>' + (exp.itemName || '') + '</td>';
+            // 支払先列は提示コードになかったため除外（必要なら追加可能）
+            // tr.innerHTML += '<td>' + (exp.payee || '') + '</td>'; 
+            tr.innerHTML += '<td class="text-end">' + formatNumber(exp.amount) + '</td>';
+            tr.innerHTML += '<td>' + (exp.remarks || '') + '</td>';
+            tr.innerHTML += '<td class="text-center">' + receiptLink + '</td>';
+            
+          } else {
+            // 経費なしの場合の空セル
+            tr.innerHTML += '<td>-</td><td>-</td><td>0</td><td>-</td><td>-</td>';
+          }
+          
+          if (i === 0) {
+            var tdAction = document.createElement('td');
+            tdAction.rowSpan = rowCount;
+            tdAction.className = "text-center";
+            tdAction.innerHTML = actionButtons;
+            tr.appendChild(tdAction);
+          }
+          
           list.appendChild(tr);
         }
       });
@@ -1323,6 +1498,26 @@
            showLoading(false);
            showView('view-A-daily-report');
         }).getReportDataForEdit(rid);
+      });
+    }
+    
+    function handleWithdrawE(reportId) {
+      if (!reportId) return;
+      showCustomAlert('この申請を取り下げて「一時保存」に戻しますか？', function() {
+        showLoading(true, '申請を取り下げ中...');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            showLoading(false);
+            if (result.status === 'success') {
+              showCustomAlert(result.message, function() {
+                loadMyReportsE();
+              });
+            } else {
+              onApiError(result.message);
+            }
+          })
+          .withFailureHandler(onApiError)
+          .withdrawReport(reportId);
       });
     }
 
