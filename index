@@ -225,8 +225,6 @@
               </div>
             </div>
 
-            <!-- (vPayeeDelete: 削除) 支払先エリアはここから削除 -->
-
             <!-- 備考エリア -->
             <div class="row g-3">
               <div class="col-12">
@@ -275,7 +273,7 @@
       <!-- タイムシート -->
       <div class="card shadow-sm">
         <div class="card-header">
-          タイムシート (7:00 〜 18:00)
+          タイムシート (7:00 〜 19:00)
         </div>
         <div class="table-responsive">
           <table class="table table-bordered table-hover timesheet-table mb-0">
@@ -285,7 +283,6 @@
                 <th class="type-col">活動区分 <span class="text-danger">*</span></th>
                 <th class="content-col">活動内容 (訪問先・業務内容)</th>
                 <th class="expense-col">経費</th>
-                <!-- (vTaxDelete: 削除) 税抜カラムは削除 -->
               </tr>
             </thead>
             <tbody id="A-timesheet-body">
@@ -382,7 +379,6 @@
             <div class="col-md-6">
               <strong>商談時間合計:</strong> <span id="C-header-meeting-time"></span> 時間
             </div>
-            <!-- (vPayeeDelete) 日報ヘッダー表示からは支払先削除 -->
             <div class="col-12 mt-2">
               <strong>備考:</strong> <pre id="C-header-remarks" class="bg-light p-2 rounded mb-0"></pre>
             </div>
@@ -429,23 +425,25 @@
         </div>
       </div>
 
-      <!-- 経費明細 (v2.9 修正: 領収書ボタン / vNew: カード金額列追加) -->
+      <!-- 経費明細 (修正: 列構成変更 - 精算方法削除) -->
       <div class="card shadow-sm mb-4">
         <div class="card-header">経費明細</div>
         <div class="table-responsive">
-          <table class="table table-striped mb-0">
+          <table class="table table-striped mb-0" style="min-width: 1000px;">
             <thead class="table-light">
               <tr>
                 <th>時間帯</th>
                 <th>利用日</th>
                 <th>経費項目</th>
-                <th>金額 (円)</th>
-                <th>支払先</th> <!-- (vPayeeNew: 追加) -->
-                <th>カード利用</th> <!-- (vCardFlg: 追加) -->
-                <th>カード金額(課長用)</th> <!-- (vCardAmt: 追加) -->
+                <th>支払先</th>
+                <th>金額 (税込)</th>
+                <th>税率</th> <!-- 復活 -->
+                <th>税抜金額</th> <!-- 復活 -->
+                <th>カード利用額</th>
+                <th>カード</th>
+                <th>精算金額</th>
+                <!-- 精算方法削除 -->
                 <th>エリア</th>
-                <th>税抜金額 (円)</th>
-                <th>税率</th>
                 <th>備考</th>
                 <th>領収書</th>
               </tr>
@@ -468,6 +466,40 @@
     <!-- ===== (E) 日報一覧ビュー (テーブル形式・セル結合) ===== -->
     <div id="view-E-my-reports" class="app-view">
       <h3 class="mb-3"><i class="bi bi-list-task"></i> 自分の申請履歴</h3>
+      
+      <!-- 検索・フィルタエリア (vNew) -->
+      <div class="card mb-3 bg-light">
+        <div class="card-body p-3">
+          <h6 class="card-title mb-2"><i class="bi bi-search"></i> 検索フィルタ</h6>
+          <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+              <label class="form-label small">日付範囲</label>
+              <div class="input-group input-group-sm">
+                <input type="date" class="form-control" id="S-date-from">
+                <span class="input-group-text">〜</span>
+                <input type="date" class="form-control" id="S-date-to">
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">金額 (税込)</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control" id="S-amount-min" placeholder="最小">
+                <span class="input-group-text">〜</span>
+                <input type="number" class="form-control" id="S-amount-max" placeholder="最大">
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">支払先・備考 (あいまい)</label>
+              <input type="text" class="form-control form-control-sm" id="S-keyword" placeholder="キーワード">
+            </div>
+            <div class="col-md-3 text-end">
+              <button class="btn btn-sm btn-secondary me-1" onclick="resetSearchE()">クリア</button>
+              <button class="btn btn-sm btn-primary" onclick="filterReportsE()">検索</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <div class="d-flex justify-content-end mb-2">
         <button class="btn btn-sm btn-outline-primary" onclick="loadMyReportsE()">
           <i class="bi bi-arrow-clockwise"></i> 更新
@@ -486,7 +518,9 @@
                 
                 <th style="min-width: 90px;">利用日</th>
                 <th style="min-width: 100px;">経費項目</th>
-                <th style="min-width: 100px;">経費詳細<br>(円)</th>
+                <th style="min-width: 100px;">支払先</th>
+                <th style="min-width: 100px;">金額<br>(円)</th>
+                <!-- 精算方法削除 -->
                 <th style="min-width: 120px;">備考</th>
                 <th style="min-width: 60px;">領収書</th>
                 
@@ -533,11 +567,11 @@
             <input type="hidden" id="M-timeSlot">
             
             <div class="row g-3">
-              <div class="col-12">
+              <div class="col-12 col-md-6">
                 <label for="M-useDate" class="form-label">利用日 <span class="text-danger">*</span></label>
                 <input type="date" class="form-control" id="M-useDate" required>
               </div>
-              <div class="col-12">
+              <div class="col-12 col-md-6">
                 <label for="M-itemCode" class="form-label">経費項目 <span class="text-danger">*</span></label>
                 <select class="form-select" id="M-itemCode" required>
                   <option value="">選択してください</option>
@@ -552,14 +586,27 @@
                   <!-- JSで動的生成 (loadLodgingAreasMasterA) -->
                 </select>
               </div>
-
+              
+              <!-- (vPayeeNew) 支払先入力欄 (復活) -->
               <div class="col-12">
-                <label for="M-amount" class="form-label">金額 (円) <span class="text-danger">*</span></label>
+                <label for="M-payee" class="form-label">支払先</label>
+                <input type="text" class="form-control" id="M-payee" placeholder="店名・取引先など">
+              </div>
+
+              <div class="col-12 col-md-6">
+                <label for="M-amount" class="form-label">金額 (税込) <span class="text-danger">*</span></label>
                 <input type="tel" class="form-control" id="M-amount-display-input" placeholder="税込金額" inputmode="numeric">
                 <input type="number" class="hidden-number-input" id="M-amount" required>
               </div>
 
-              <!-- (vCardFlg: 新規) カード利用スイッチ (修正済み) -->
+              <!-- (vNew) カード利用額: 全員表示・名称変更 -->
+              <div class="col-12 col-md-6" id="M-card-wrapper">
+                <label for="M-cardAmount" class="form-label">カード利用額 (円)</label>
+                <input type="tel" class="form-control" id="M-cardAmount-display-input" placeholder="カードでの支払額" inputmode="numeric">
+                <input type="number" class="hidden-number-input" id="M-cardAmount">
+              </div>
+              
+              <!-- (vCardFlg: 新規) カード利用スイッチ -->
               <div class="col-12">
                 <div class="form-check form-switch">
                   <input class="form-check-input" type="checkbox" role="switch" id="M-isCard">
@@ -568,25 +615,16 @@
                   </label>
                 </div>
               </div>
-
-              <!-- (vNew) カード利用額: 課長以上かつ宿泊費のみ表示 -->
-              <div class="col-12" id="M-card-wrapper" style="display: none;">
-                <label for="M-cardAmount" class="form-label text-primary">カード利用額 (円)</label>
-                <input type="tel" class="form-control" id="M-cardAmount-display-input" placeholder="カードでの支払額" inputmode="numeric">
-                <input type="number" class="hidden-number-input" id="M-cardAmount">
-                <small class="text-muted">※宿泊費の一部または全額をカードで支払った場合に入力</small>
-              </div>
               
+              <!-- (復活) 税率・税抜金額入力 -->
               <div class="col-12">
                 <label for="M-tax-rate-select" class="form-label">消費税率</label>
                 <div class="input-group">
                   <select class="form-select" id="M-tax-rate-select">
-                    <option value="auto">---</option>
+                    <option value="auto">--- (指定なし)</option>
                     <option value="10">10%</option>
                     <option value="8">8%</option>
-                    <option value="5">5%</option>
-                    <option value="3">3%</option>
-                    <option value="0">消費税なし</option>
+                    <option value="0">0%</option>
                     <option value="custom">その他 (手入力)</option>
                   </select>
                   <input type="number" class="form-control" id="M-tax-rate-custom" placeholder="例: 10" style="display: none;" min="0">
@@ -599,21 +637,27 @@
                 <input type="number" class="hidden-number-input" id="M-amount-excluding-tax">
               </div>
               
-              <!-- (vPayeeNew) 支払先入力欄 (備考の上に配置) -->
-              <div class="col-12">
-                <label for="M-payee" class="form-label">支払先</label>
-                <input type="text" class="form-control" id="M-payee" placeholder="訪問先・店名など">
+              <!-- 精算金額 (vNew: 精算方法は削除) -->
+              <div class="col-12 bg-light p-3 rounded">
+                <div class="row g-3 align-items-center">
+                   <div class="col-md-12">
+                     <label class="form-label fw-bold">精算金額 (自動計算)</label>
+                     <div class="fs-4 text-primary" id="M-reimburse-display">0 円</div>
+                     <input type="hidden" id="M-reimburseAmount">
+                     <small class="text-muted">※金額(税込) - カード利用額</small>
+                   </div>
+                </div>
               </div>
 
               <div class="col-12">
-                <label for="M-remarks" class="form-label">備考（内容・訪問先など）</label>
+                <label for="M-remarks" class="form-label">備考（内容詳細など）</label>
                 <input type="text" class="form-control" id="M-remarks" placeholder="例: 駐車代 (〇〇商事様)">
               </div>
               
               <hr class="my-2">
               
               <div class="col-12">
-                <label for="M-receiptImage" class="form-label">領収書アップロード</label>
+                <label for="M-receiptImage" class="form-label">領収書アップロード (自動リネーム保存)</label>
                 <input class="form-control" type="file" id="M-receiptImage" accept="image/*">
               </div>
               
@@ -700,12 +744,12 @@
     var currentActivities = {}; 
     var currentExpenses = [];   
     
-    // (A) タイムシートの定義
+    // (A) タイムシートの定義 (拡張: 19:00まで)
     var TIME_SLOTS = [
       "07:00", "07:30", "08:00", "08:30", "09:00", "09:30",
       "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
       "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
-      "16:00", "16:30", "17:00", "17:30", "18:00"
+      "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00"
     ];
 
     // (A) 経費モーダルのインスタンス
@@ -723,6 +767,8 @@
     // (v20 新規) 現在の経費上限額
     var currentExpenseLimit = null;
 
+    // (E) 一覧データキャッシュ
+    var allMyReportsCache = [];
 
     // --- 初期化 -------------------------------------------------------
 
@@ -760,11 +806,26 @@
       document.getElementById('M-itemCode').addEventListener('change', onItemCodeChangeA);
       document.getElementById('M-areaCode').addEventListener('change', onAreaCodeChangeA);
       
-      // (v22 新規) 税計算用のイベントリスナー
-      document.getElementById('M-amount').addEventListener('input', handleTaxCalculationA);
+      // (vNew) 精算金額計算用イベントリスナー
+      document.getElementById('M-amount').addEventListener('input', function(e) {
+          handleTaxCalculationA(e);
+          calculateReimburseA();
+      });
+      document.getElementById('M-cardAmount').addEventListener('input', calculateReimburseA);
+      
+      // (v22) 税計算用リスナー
       document.getElementById('M-amount-excluding-tax').addEventListener('input', handleTaxCalculationA);
       document.getElementById('M-tax-rate-select').addEventListener('change', handleTaxCalculationA);
       document.getElementById('M-tax-rate-custom').addEventListener('input', handleTaxCalculationA);
+      
+      // (vCardFlg) カード利用チェック変更
+      document.getElementById('M-isCard').addEventListener('change', function(e) {
+          if (!e.target.checked) {
+              // カード利用OFFならカード金額をクリアして再計算
+              updateKanmaInputA('M-cardAmount', '');
+          }
+          calculateReimburseA();
+      });
 
       // (v24 新規) カンマ入力のイベントリスナー設定
       initializeKanmaInputsA();
@@ -1080,7 +1141,6 @@
       document.getElementById('A-reportId').value = '';
       document.getElementById('A-date').value = getTodayString();
       document.getElementById('A-mileageDisplay').textContent = '0 km';
-      // (vPayeeDelete: 削除) document.getElementById('A-payee').value = '';
       
       document.getElementById('A-totalMovementTime').textContent = '0.0 時間';
       document.getElementById('A-totalMeetingTime').textContent = '0.0 時間';
@@ -1095,7 +1155,7 @@
       document.querySelectorAll('.A-activity-type').forEach(function(el) { el.value = ''; });
       document.querySelectorAll('.A-activity-content').forEach(function(el) { el.value = ''; });
       
-      // 再描画して税抜金額表示などもリセット
+      // 再描画
       renderTimesheetA();
       
       document.querySelectorAll('.expense-button').forEach(function(badge) {
@@ -1176,31 +1236,9 @@
       document.getElementById('A-totalMeetingTime').textContent = totalMeetingHours.toFixed(1) + ' 時間';
     }
 
-    /**
-     * (vNew) ユーザーが「課長職以上」かどうかを判定する
-     */
-    function isManagerLevel_() {
-      var myCode = EMPLOYEE_INFO.positionCode;
-      if (!myCode) return false;
-      
-      // 役職マスタから自分の役職名を探す
-      var myPos = POSITIONS_MASTER.find(function(p) {
-        return String(p['役職コード']) === String(myCode);
-      });
-      
-      if (!myPos) return false;
-      
-      var name = myPos['役職名'];
-      // 単純なキーワード判定: "課長", "部長", "本部長", "役員", "代表", "社長"
-      if (name.indexOf('課長') > -1 || name.indexOf('部長') > -1 || 
-          name.indexOf('役員') > -1 || name.indexOf('社長') > -1 || name.indexOf('代表') > -1) {
-        return true;
-      }
-      return false;
-    }
 
     /**
-     * (A) 経費モーダルを開く (v24: カンマ入力対応 / vNew: カード利用額対応)
+     * (A) 経費モーダルを開く
      * @param {string} timeSlot "07:00" など
      */
     function openExpenseModalA(timeSlot) {
@@ -1215,20 +1253,20 @@
       document.getElementById('M-areaCode').required = false;
       document.getElementById('M-areaCode').value = '';
       
-      // (vNew) カード利用額エリアをリセット
-      document.getElementById('M-card-wrapper').style.display = 'none';
-      updateKanmaInputA('M-cardAmount', '');
-      
-      // (vCardFlg: 新規) カード利用チェックボックスをリセット
+      // カード利用チェックボックスをリセット
       document.getElementById('M-isCard').checked = false;
 
       currentExpenseLimit = null;
       checkExpenseLimitA(); 
       
+      // 金額・カード金額リセット
       updateKanmaInputA('M-amount', '');
-      updateKanmaInputA('M-amount-excluding-tax', '');
+      updateKanmaInputA('M-cardAmount', '');
+      updateKanmaInputA('M-amount-excluding-tax', ''); // 税抜金額もリセット
+      
       document.getElementById('M-tax-rate-select').value = 'auto';
-      toggleCustomTaxRateA(); 
+      toggleCustomTaxRateA();
+      calculateReimburseA();
       
       var deleteButton = document.getElementById('M-delete-expense');
       
@@ -1241,30 +1279,27 @@
         document.getElementById('M-useDate').value = expenseToEdit.useDate.replace(/\//g, '-');
         document.getElementById('M-itemCode').value = expenseToEdit.itemCode;
         document.getElementById('M-remarks').value = expenseToEdit.remarks;
+        document.getElementById('M-payee').value = expenseToEdit.payee || '';
+
         document.getElementById('M-receiptUrl').value = expenseToEdit.receiptUrl;
         document.getElementById('M-areaCode').value = expenseToEdit.areaCode || '';
-        document.getElementById('M-payee').value = expenseToEdit.payee || ''; // (vPayeeNew)
-        document.getElementById('M-isCard').checked = expenseToEdit.isCard || false; // (vCardFlg)
+        document.getElementById('M-isCard').checked = expenseToEdit.isCard || false;
         
+        // 税率復元
         document.getElementById('M-tax-rate-select').value = expenseToEdit.taxRate || 'auto';
         document.getElementById('M-tax-rate-custom').value = expenseToEdit.taxRateCustom || '';
-
+        toggleCustomTaxRateA();
+        
         deleteButton.style.display = 'inline-block'; 
         
         // 編集読み込み時のロジック実行
-        // 1. 項目変更イベント (エリア表示/非表示、カード表示/非表示、上限額セット)
         onItemCodeChangeA(); 
-        // 2. 金額復元
         updateKanmaInputA('M-amount', expenseToEdit.amount);
-        // (vNew) カード金額復元
-        if (expenseToEdit.cardAmount) {
-           updateKanmaInputA('M-cardAmount', expenseToEdit.cardAmount);
-        }
+        updateKanmaInputA('M-cardAmount', expenseToEdit.cardAmount);
+        updateKanmaInputA('M-amount-excluding-tax', expenseToEdit.taxExcludedAmount);
         
         checkExpenseLimitA();
-        
-        updateKanmaInputA('M-amount-excluding-tax', expenseToEdit.taxExcludedAmount);
-        handleTaxCalculationA({ target: { id: 'M-amount' } });
+        calculateReimburseA();
 
       } else {
         document.getElementById('M-useDate').value = document.getElementById('A-date').value || getTodayString();
@@ -1286,11 +1321,8 @@
       document.getElementById('M-areaCode').required = false;
       document.getElementById('M-areaCode').value = '';
       
-      // (vNew) カード欄リセット
-      document.getElementById('M-card-wrapper').style.display = 'none';
       updateKanmaInputA('M-cardAmount', '');
       
-      // (vCardFlg: 新規)
       document.getElementById('M-isCard').checked = false;
 
       currentExpenseLimit = null;
@@ -1300,7 +1332,7 @@
       updateKanmaInputA('M-amount-excluding-tax', '');
       
       document.getElementById('M-tax-rate-select').value = 'auto';
-      toggleCustomTaxRateA(); 
+      toggleCustomTaxRateA();
     }
 
     function handleImageUploadA(event) {
@@ -1311,6 +1343,7 @@
       reader.readAsDataURL(file);
       reader.onload = function() {
         var base64Image = reader.result;
+        var originalFileName = file.name || 'receipt.png';
         
         var statusEl = document.getElementById('M-receiptUrl');
         statusEl.value = 'アップロード中です...';
@@ -1324,7 +1357,7 @@
         google.script.run
           .withSuccessHandler(onReceiptUploadSuccessA)
           .withFailureHandler(onApiError)
-          .uploadReceiptImage(base64Image);
+          .uploadReceiptImage(base64Image, originalFileName);
       };
       reader.onerror = function(error) {
         console.error("File reading error: ", error);
@@ -1395,16 +1428,12 @@
     }
     
     /**
-     * (A) (v20 新規) 経費項目(select)の変更イベントハンドラ (vNew: カード利用額表示判定)
+     * (A) (v20 新規) 経費項目(select)の変更イベントハンドラ
      */
     function onItemCodeChangeA() {
       var itemCode = document.getElementById('M-itemCode').value;
       var areaWrapper = document.getElementById('M-area-wrapper');
       var areaSelect = document.getElementById('M-areaCode');
-      
-      // (vNew) カード入力欄の制御
-      var cardWrapper = document.getElementById('M-card-wrapper');
-      var isManager = isManagerLevel_();
       
       // リセット
       currentExpenseLimit = null;
@@ -1441,17 +1470,11 @@
         updateKanmaInputA('M-amount', ''); 
       }
       
-      // (vNew) 課長以上 && 宿泊費ならカード欄を表示
-      if (itemCode === '102' && isManager) {
-        cardWrapper.style.display = 'block';
-      } else {
-        cardWrapper.style.display = 'none';
-        updateKanmaInputA('M-cardAmount', ''); // 非表示時はクリア
-      }
-      
+      // (vNew) 日当などは金額自動入力時に税計算も走らせる
       handleTaxCalculationA({ target: { id: 'M-amount' } });
       
       checkExpenseLimitA();
+      calculateReimburseA();
     }
     
     function onAreaCodeChangeA() {
@@ -1468,8 +1491,8 @@
         }
         
         handleTaxCalculationA({ target: { id: 'M-amount' } });
-        
         checkExpenseLimitA();
+        calculateReimburseA();
       }
     }
     
@@ -1492,9 +1515,94 @@
       }
     }
 
+    /**
+     * (vNew) 精算金額の自動計算
+     */
+    function calculateReimburseA() {
+      var amount = parseFloat(document.getElementById('M-amount').value) || 0;
+      var cardAmount = parseFloat(document.getElementById('M-cardAmount').value) || 0;
+      
+      var reimburse = amount - cardAmount;
+      
+      document.getElementById('M-reimburseAmount').value = reimburse;
+      document.getElementById('M-reimburse-display').textContent = formatNumber(reimburse) + ' 円';
+    }
+    
+    // --- (v22復活) 税計算ロジック --------------------------------
+    function toggleCustomTaxRateA() {
+      var select = document.getElementById('M-tax-rate-select');
+      var customInput = document.getElementById('M-tax-rate-custom');
+      if (select.value === 'custom') {
+        customInput.style.display = 'block';
+      } else {
+        customInput.style.display = 'none';
+        customInput.value = ''; 
+      }
+    }
+
+    function getSelectedTaxRateA() {
+      var select = document.getElementById('M-tax-rate-select');
+      var customInput = document.getElementById('M-tax-rate-custom');
+      
+      if (select.value === 'custom') {
+        return parseFloat(customInput.value) || 0; 
+      }
+      if (select.value === 'auto') {
+        return null; 
+      }
+      return parseFloat(select.value) || 0;
+    }
+
+    function handleTaxCalculationA(e) {
+      toggleCustomTaxRateA();
+      
+      var lastChangedId = e.target.id;
+      
+      var taxIncludedInput = document.getElementById('M-amount');
+      var taxExcludedInput = document.getElementById('M-amount-excluding-tax');
+      
+      var taxIncluded = parseFloat(taxIncludedInput.value) || 0;
+      var taxExcluded = parseFloat(taxExcludedInput.value) || 0;
+      var taxRate = getSelectedTaxRateA(); 
+
+      if (lastChangedId === 'M-tax-rate-select' || lastChangedId === 'M-tax-rate-custom') {
+        if (taxRate === null) {
+           // autoの場合は税抜計算しない（任意）
+           updateKanmaInputA('M-amount-excluding-tax', '');
+        } else {
+          if (taxIncluded > 0) {
+            // 税込から税抜を計算 (切り上げ等、会社のルールによるがここでは ceil )
+            var newTaxExcluded = (taxRate >= 0) ? Math.ceil(taxIncluded / (1 + taxRate / 100)) : taxIncluded;
+            updateKanmaInputA('M-amount-excluding-tax', newTaxExcluded);
+          }
+          else if (taxExcluded > 0) {
+            var newTaxIncluded = Math.round(taxExcluded * (1 + taxRate / 100));
+            updateKanmaInputA('M-amount', newTaxIncluded);
+          }
+        }
+      }
+      else if (lastChangedId === 'M-amount-excluding-tax' || lastChangedId === 'M-amount-excluding-tax-display-input') {
+        if (taxRate !== null) {
+          var newTaxIncluded = Math.round(taxExcluded * (1 + taxRate / 100));
+          updateKanmaInputA('M-amount', newTaxIncluded);
+          // 税込が変わったら精算金額も再計算が必要
+          calculateReimburseA();
+        }
+      }
+      else if (lastChangedId === 'M-amount' || lastChangedId === 'M-amount-display-input') {
+        if (taxRate !== null) {
+          var newTaxExcluded = (taxRate >= 0) ? Math.ceil(taxIncluded / (1 + taxRate / 100)) : taxIncluded;
+          updateKanmaInputA('M-amount-excluding-tax', newTaxExcluded);
+        } else {
+          updateKanmaInputA('M-amount-excluding-tax', '');
+        }
+        checkExpenseLimitA();
+      }
+    }
+
 
     /**
-     * (A) モーダルから経費アイテムを currentExpenses に追加 (vNew: カード金額対応)
+     * (A) モーダルから経費アイテムを currentExpenses に追加
      */
     function addExpenseItemA() {
       var form = document.getElementById('expense-form');
@@ -1517,16 +1625,15 @@
         receiptUrl: document.getElementById('M-receiptUrl').value,
         areaCode: document.getElementById('M-areaCode').value || '',
         
+        payee: document.getElementById('M-payee').value,
+        isCard: document.getElementById('M-isCard').checked,
+        cardAmount: parseFloat(document.getElementById('M-cardAmount').value) || 0,
+        reimburseAmount: parseFloat(document.getElementById('M-reimburseAmount').value) || 0,
+        
+        // 復活: 税関連
         taxExcludedAmount: parseFloat(document.getElementById('M-amount-excluding-tax').value) || 0,
         taxRate: document.getElementById('M-tax-rate-select').value,
-        taxRateCustom: parseFloat(document.getElementById('M-tax-rate-custom').value) || null,
-        
-        // (vPayeeNew)
-        payee: document.getElementById('M-payee').value,
-        // (vCardFlg)
-        isCard: document.getElementById('M-isCard').checked,
-        // (vNew) カード利用額(課長用)
-        cardAmount: parseFloat(document.getElementById('M-cardAmount').value) || 0
+        taxRateCustom: parseFloat(document.getElementById('M-tax-rate-custom').value) || null
       };
       
       if (expenseId) {
@@ -1674,7 +1781,6 @@
           reportId: document.getElementById('A-reportId').value,
           date: reportDate, 
           remarks: document.getElementById('A-remarks').value,
-          // (vPayeeDelete) payee: ... は削除
           startMeter: document.getElementById('A-startMeter').value,
           endMeter: document.getElementById('A-endMeter').value,
           mileage: mileage,
@@ -1757,7 +1863,7 @@
           var statusText = report['承認ステータス'] || '申請中';
           
           var statusBadge = '';
-          if (statusText === '申請中') {
+          if (statusText === '申請中' || statusText === '1次承認済') {
              statusBadge = '<span class="badge bg-primary">承認待ち</span>';
           } else if (statusText === 'チェック済') {
              statusBadge = '<span class="badge bg-primary">承認待ち</span>';
@@ -1819,6 +1925,7 @@
       statusBadge.className = 'badge fs-6'; 
       switch (statusText) {
         case '申請中': 
+        case '1次承認済':
         case 'チェック済':
           statusBadge.textContent = '承認待ち';
           statusBadge.classList.add('bg-primary'); 
@@ -1865,7 +1972,7 @@
         actBody.innerHTML = '<tr><td colspan="3">行動明細はありません。</td></tr>';
       }
       
-      // 経費明細
+      // 経費明細 (vNew: 新仕様の列構成に対応)
       var expBody = document.getElementById('C-expenses-body');
       expBody.innerHTML = '';
       if (expenses && expenses.length > 0) {
@@ -1883,36 +1990,28 @@
             : '<span class="text-muted" style="font-size: 0.85rem;">添付なし</span>'; 
             
           var areaName = (ex.areaCode && areaMap[ex.areaCode]) ? areaMap[ex.areaCode] : '';
-          
-          var taxRateDisplay = 'N/A';
-          if (ex.taxRate === 'custom') {
-            taxRateDisplay = (ex.taxRateCustom || '0') + '% (手入力)';
-          } else if (ex.taxRate === 'auto') {
-            taxRateDisplay = '---';
-          } else if (ex.taxRate) {
-            taxRateDisplay = ex.taxRate + '%';
-          }
-          
-          var cardDisplay = (ex.cardAmount > 0) ? formatNumber(ex.cardAmount) : '-';
-          
+          var taxRateDisplay = ex.taxRate === 'custom' ? (ex.taxRateCustom + '%(手入力)') : (ex.taxRate + '%');
+          if (!ex.taxRate || ex.taxRate === 'auto') taxRateDisplay = '-';
+
           expBody.innerHTML += 
             '<tr>' +
               '<td>' + (ex.timeSlot || 'N/A') + '</td>' +
               '<td>' + useDate + '</td>' +
               '<td>' + (ex.itemName || '不明な項目') + '</td>' +
-              '<td>' + formatNumber(ex.amount || 0) + '</td>' +
               '<td>' + (ex.payee || '') + '</td>' + 
-              '<td>' + (ex.isCard ? 'あり' : 'なし') + '</td>' + 
-              '<td>' + cardDisplay + '</td>' + 
-              '<td>' + areaName + '</td>' +
-              '<td>' + formatNumber(ex.taxExcludedAmount || 0) + '</td>' +
+              '<td>' + formatNumber(ex.amount || 0) + '</td>' +
               '<td>' + taxRateDisplay + '</td>' +
+              '<td>' + formatNumber(ex.taxExcludedAmount || 0) + '</td>' +
+              '<td>' + formatNumber(ex.cardAmount || 0) + '</td>' + 
+              '<td>' + (ex.isCard ? 'あり' : 'なし') + '</td>' + 
+              '<td>' + formatNumber(ex.reimburseAmount || 0) + '</td>' + 
+              '<td>' + areaName + '</td>' +
               '<td>' + (ex.remarks || '') + '</td>' +
               '<td>' + urlLink + '</td>' + 
             '</tr>';
         });
       } else {
-        expBody.innerHTML = '<tr><td colspan="12">経費明細はありません。</td></tr>';
+        expBody.innerHTML = '<tr><td colspan="13">経費明細はありません。</td></tr>';
       }
       
       // 5. 承認ボタンの制御
@@ -1925,19 +2024,25 @@
       });
 
       // 権限がある(IS_CHECKER or IS_APPROVER) かつ 
-      // ステータスが「申請中」であれば、承認ボタンを表示する
-      // ※「チェック済」という過去のデータが残っていた場合も承認できるようにしておく
-      if ((IS_CHECKER || IS_APPROVER) && (statusText === '申請中' || statusText === 'チェック済') && viewC_ReturnView === 'view-B-approval-list') {
-        var buttonsHtml = 
-          '<button class="btn btn-danger btn-lg" onclick="handleRejectC()">' +
-            '<i class="bi bi-x-circle"></i> 差戻し' +
-          '</button>' +
-          '<button class="btn btn-success btn-lg ms-3" onclick="handleApproveC()">' +
-            '<i class="bi bi-check-circle"></i> 承認（精算申請）' +
-          '</button>';
-          
-        approvalButtonsWrapper.insertAdjacentHTML('beforeend', buttonsHtml);
-        approvalButtonsWrapper.style.display = 'block';
+      // ステータスが承認可能であれば、承認ボタンを表示する
+      if ((IS_CHECKER || IS_APPROVER) && viewC_ReturnView === 'view-B-approval-list') {
+        var canApprove = false;
+        if (statusText === '申請中' || statusText === '1次承認済' || statusText === 'チェック済') {
+             canApprove = true;
+        }
+
+        if (canApprove) {
+            var buttonsHtml = 
+              '<button class="btn btn-danger btn-lg" onclick="handleRejectC()">' +
+                '<i class="bi bi-x-circle"></i> 差戻し' +
+              '</button>' +
+              '<button class="btn btn-success btn-lg ms-3" onclick="handleApproveC()">' +
+                '<i class="bi bi-check-circle"></i> 承認' +
+              '</button>';
+              
+            approvalButtonsWrapper.insertAdjacentHTML('beforeend', buttonsHtml);
+            approvalButtonsWrapper.style.display = 'block';
+        }
       }
 
       // --- 取り下げボタン ---
@@ -2004,14 +2109,14 @@
     }
 
     /**
-     * (修正) 承認処理：「承認して精算申請します」
+     * (修正) 承認処理
      */
     function handleApproveC() {
       var reportId = document.getElementById('C-reportId').value;
       if (!reportId) return;
       
-      showCustomAlert('この日報を承認し、経理へ精算申請を送信します。\nよろしいですか？', function() {
-        showLoading(true, '承認・連携処理中...');
+      showCustomAlert('この日報を承認します。\nよろしいですか？', function() {
+        showLoading(true, '承認処理中...');
         google.script.run
           .withSuccessHandler(function(result) {
             showLoading(false);
@@ -2047,7 +2152,7 @@
     }
 
 
-    // --- (E) 日報一覧機能 (修正: テーブル形式・セル結合表示) ---------------------
+    // --- (E) 日報一覧機能 (修正: 検索機能追加) ---------------------
 
     function loadMyReportsE() {
       showLoading(true, '日報一覧を取得中...');
@@ -2059,9 +2164,57 @@
 
     function onLoadMyReportsSuccessE(reports) {
       showLoading(false);
+      allMyReportsCache = reports || []; // キャッシュに保存
+      filterReportsE(); // フィルタ実行して表示
+    }
+
+    function resetSearchE() {
+      document.getElementById('S-date-from').value = '';
+      document.getElementById('S-date-to').value = '';
+      document.getElementById('S-amount-min').value = '';
+      document.getElementById('S-amount-max').value = '';
+      document.getElementById('S-keyword').value = '';
+      filterReportsE();
+    }
+
+    function filterReportsE() {
+      var dFrom = document.getElementById('S-date-from').value;
+      var dTo = document.getElementById('S-date-to').value;
+      var aMin = parseFloat(document.getElementById('S-amount-min').value);
+      var aMax = parseFloat(document.getElementById('S-amount-max').value);
+      var kw = document.getElementById('S-keyword').value.toLowerCase().trim();
+      
+      var filtered = allMyReportsCache.filter(function(r) {
+        // 日付フィルタ
+        var rDate = r['日付'] ? r['日付'].replace(/\//g, '-') : ''; 
+        if (dFrom && rDate < dFrom) return false;
+        if (dTo && rDate > dTo) return false;
+        
+        // 金額フィルタ
+        var amt = parseFloat(r['合計経費']);
+        if (!isNaN(aMin) && amt < aMin) return false;
+        if (!isNaN(aMax) && amt > aMax) return false;
+        
+        // キーワードフィルタ
+        if (kw) {
+          var text = (r['備考'] || '') + ' ';
+          if (r.expenses) {
+             r.expenses.forEach(function(ex) {
+                 text += (ex.payee || '') + ' ' + (ex.itemName || '') + ' ' + (ex.remarks || '') + ' ';
+             });
+          }
+          if (text.toLowerCase().indexOf(kw) === -1) return false;
+        }
+        
+        return true;
+      });
+      
+      renderReportsTableE(filtered);
+    }
+
+    function renderReportsTableE(reports) {
       var tbody = document.getElementById('E-my-reports-list-body');
       var noReportsMsg = document.getElementById('E-no-reports-msg');
-      
       tbody.innerHTML = '';
 
       if (!reports || reports.length === 0) {
@@ -2076,6 +2229,7 @@
           '一時保存': 1,
           '差戻し': 2,
           '申請中': 3,
+          '1次承認済': 3.5,
           '承認済': 4,
           '精算申請済': 5
         };
@@ -2087,23 +2241,13 @@
         return (b['日付'] || '').localeCompare(a['日付'] || '');
       });
       
-      var currentStatus = '';
-      
       reports.forEach(function(report) {
         var rId = report['日報ID'];
         var status = report['承認ステータス'];
         var date = report['日付'] ? formatDateWithDay(report['日付']) : '日付なし';
         var total = formatNumber(report['合計経費']);
         var remarks = report['備考'] || '';
-        var expenses = report['expenses'] || []; // 経費リスト
-        
-        // ステータスヘッダー行
-        if (status !== currentStatus) {
-          currentStatus = status;
-          var groupTr = document.createElement('tr');
-          groupTr.innerHTML = '<td colspan="10" class="status-group-header">' + currentStatus + '</td>';
-          tbody.appendChild(groupTr);
-        }
+        var expenses = report['expenses'] || []; 
         
         var statusBadge = '';
         var badgeClass = 'bg-secondary';
@@ -2111,6 +2255,7 @@
         
         switch (status) {
           case '申請中': badgeClass = 'bg-primary'; statusLabel = '申請中'; break;
+          case '1次承認済': badgeClass = 'bg-primary'; statusLabel = '1次承認済'; break;
           case 'チェック済': badgeClass = 'bg-warning text-dark'; statusLabel = '承認待ち'; break; 
           case '承認済': 
           case '精算申請済': badgeClass = 'bg-info text-dark'; statusLabel = '精算申請済'; break;
@@ -2127,11 +2272,9 @@
           actionButtons = '<button class="btn btn-sm btn-outline-secondary text-nowrap" onclick="loadReportDetailsC(\'' + rId + '\', \'view-E-my-reports\')"><i class="bi bi-eye"></i> 表示</button>';
         }
         if (status === '申請中') {
-          // (vNew: Icon & Text Change)
           actionButtons += '<br><button class="btn btn-sm btn-outline-danger mt-1 text-nowrap" onclick="handleWithdrawE(\'' + rId + '\')"><i class="bi bi-arrow-counterclockwise"></i> 取り下げ</button>';
         }
 
-        // 経費行の生成
         var rowCount = Math.max(1, expenses.length);
         
         for (var i = 0; i < rowCount; i++) {
@@ -2139,26 +2282,22 @@
           
           // 日報共通情報 (1行目のみ表示、rowspan)
           if (i === 0) {
-            // 申請日 (ここでは日報の日付を使用)
             var tdDate = document.createElement('td');
             tdDate.rowSpan = rowCount;
             tdDate.textContent = date;
             tr.appendChild(tdDate);
             
-            // ステータス
             var tdStatus = document.createElement('td');
             tdStatus.rowSpan = rowCount;
             tdStatus.className = "text-center";
             tdStatus.innerHTML = statusBadge;
             tr.appendChild(tdStatus);
             
-            // 件名 (備考)
             var tdSubject = document.createElement('td');
             tdSubject.rowSpan = rowCount;
             tdSubject.textContent = remarks;
             tr.appendChild(tdSubject);
             
-            // 合計経費
             var tdTotal = document.createElement('td');
             tdTotal.rowSpan = rowCount;
             tdTotal.className = "text-end fw-bold";
@@ -2170,29 +2309,24 @@
           if (expenses[i]) {
             var exp = expenses[i];
             
-            // 利用日：表記揺れや型に対応
             var rawDate = exp.useDate;
             var useDate = '-';
             if (rawDate) {
-              // 文字列化してT以降(時間)をカット、ハイフンをスラッシュに統一
               var dateStr = String(rawDate).split('T')[0]; 
               useDate = dateStr.replace(/-/g, '/');
             }
             
             tr.innerHTML += '<td>' + useDate + '</td>';
             tr.innerHTML += '<td>' + (exp.itemName || '') + '</td>';
+            tr.innerHTML += '<td>' + (exp.payee || '') + '</td>';
             tr.innerHTML += '<td class="text-end">' + formatNumber(exp.amount) + '</td>';
             tr.innerHTML += '<td>' + (exp.remarks || '') + '</td>';
             
-            // 領収書 (まだURLがない想定なので仮置き)
-            var receiptLink = '-';
-            // Code.gs更新待ち: receiptUrl
-            // if (exp.receiptUrl) { ... }
+            var receiptLink = exp.receiptUrl ? '<i class="bi bi-paperclip"></i>' : '-';
             tr.innerHTML += '<td class="text-center">' + receiptLink + '</td>';
             
           } else {
-            // 経費なしの場合の空セル
-            tr.innerHTML += '<td>-</td><td>-</td><td>0</td><td>-</td><td>-</td>';
+            tr.innerHTML += '<td colspan="6">-</td>';
           }
           
           // 操作ボタン (1行目のみ、rowspan)
@@ -2208,8 +2342,6 @@
         }
       });
     }
-    
-    // --- (以下、共通関数等は変更なし) ---
     
     function handleEditReportE(reportId) {
       showCustomAlert('この日報データを編集します。入力中の内容は破棄されますが、よろしいですか？', function() {
@@ -2262,78 +2394,6 @@
       showView('view-A-daily-report');
     }
     
-    // --- (v22 新規) 税計算 & カンマ表示 --------------------------------
-    
-    function toggleCustomTaxRateA() {
-      var select = document.getElementById('M-tax-rate-select');
-      var customInput = document.getElementById('M-tax-rate-custom');
-      if (select.value === 'custom') {
-        customInput.style.display = 'block';
-      } else {
-        customInput.style.display = 'none';
-        customInput.value = ''; 
-      }
-    }
-
-    function getSelectedTaxRateA() {
-      var select = document.getElementById('M-tax-rate-select');
-      var customInput = document.getElementById('M-tax-rate-custom');
-      
-      if (select.value === 'custom') {
-        return parseFloat(customInput.value) || 0; 
-      }
-      if (select.value === 'auto') {
-        return null; 
-      }
-      return parseFloat(select.value) || 0;
-    }
-
-    function handleTaxCalculationA(e) {
-      toggleCustomTaxRateA();
-      
-      var lastChangedId = e.target.id;
-      
-      var taxIncludedInput = document.getElementById('M-amount');
-      var taxExcludedInput = document.getElementById('M-amount-excluding-tax');
-      
-      var taxIncluded = parseFloat(taxIncludedInput.value) || 0;
-      var taxExcluded = parseFloat(taxExcludedInput.value) || 0;
-      var taxRate = getSelectedTaxRateA(); 
-
-      if (lastChangedId === 'M-tax-rate-select' || lastChangedId === 'M-tax-rate-custom') {
-        if (taxRate === null) {
-           updateKanmaInputA('M-amount-excluding-tax', '');
-        } else {
-          if (taxIncluded > 0) {
-            var newTaxExcluded = (taxRate > 0) ? Math.ceil(taxIncluded / (1 + taxRate / 100)) : taxIncluded;
-            updateKanmaInputA('M-amount-excluding-tax', newTaxExcluded);
-          }
-          else if (taxExcluded > 0) {
-            var newTaxIncluded = Math.round(taxExcluded * (1 + taxRate / 100));
-            updateKanmaInputA('M-amount', newTaxIncluded);
-          }
-        }
-      }
-      else if (lastChangedId === 'M-amount-excluding-tax') {
-        if (taxRate !== null) {
-          var newTaxIncluded = Math.round(taxExcluded * (1 + taxRate / 100));
-          updateKanmaInputA('M-amount', newTaxIncluded);
-        }
-      }
-      else if (lastChangedId === 'M-amount') {
-        if (taxRate !== null) {
-          var newTaxExcluded = (taxRate > 0) ? Math.ceil(taxIncluded / (1 + taxRate / 100)) : taxIncluded;
-          updateKanmaInputA('M-amount-excluding-tax', newTaxExcluded);
-        } else {
-          updateKanmaInputA('M-amount-excluding-tax', '');
-        }
-      }
-      
-      if (lastChangedId === 'M-amount') {
-        checkExpenseLimitA();
-      }
-    }
-    
     // --- (v24 新規) カンマ入力フォーマット --------------------------------
     
     function initializeKanmaInputsA() {
@@ -2354,6 +2414,7 @@
       
       displayInput.value = numericValue > 0 ? numericValue.toLocaleString() : (numericValueStr === '0' ? '0' : '');
       
+      // Hiddenのinputイベントを発火させて計算処理などを動かす
       hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
     
@@ -2366,7 +2427,6 @@
       var num = parseFloat(numericValue) || 0;
       
       hiddenInput.value = num;
-      
       displayInput.value = num > 0 ? num.toLocaleString() : '';
     }
 
