@@ -1,9 +1,8 @@
 /**
  * 日報兼経費精算アプリ - バックエンド処理
- * (v2.9.2 修正版)
- * - 承認処理のエラーハンドリング強化
- * - 経理API連携失敗時のフォールバック対応
- * - 経理API連携時の認証トークン付与 (401エラー対応)
+ * (v2.9.6 修正版)
+ * - 消費税区分に基づく詳細項目（分類区分、計算区分）の保存対応
+ * - 会計仕訳データ連携強化
  */
 
 // -----------------------------------------------
@@ -24,7 +23,8 @@ var SHEET_NAMES = {
   LODGING_AREAS: '宿泊費エリアマスタ',
   JOB_CATEGORIES: '職種区分マスタ',
   POSITIONS: '役職マスタ',
-  DEPARTMENTS: '部門マスタ'
+  DEPARTMENTS: '部門マスタ',
+  TAX_TYPES: '消費税区分マスタ'
 };
 
 // -----------------------------------------------
@@ -51,6 +51,7 @@ function doGet(e) {
   var jobCategories = getSheetData_(SHEET_NAMES.JOB_CATEGORIES, ss);
   var positions = getSheetData_(SHEET_NAMES.POSITIONS, ss);
   var departments = getSheetData_(SHEET_NAMES.DEPARTMENTS, ss);
+  var taxTypes = getSheetData_(SHEET_NAMES.TAX_TYPES, ss);
   
   ui.employeeInfo = JSON.stringify(userInfo.employeeInfo); 
   ui.isChecker = userInfo.isChecker;
@@ -62,6 +63,7 @@ function doGet(e) {
   ui.jobCategories = JSON.stringify(jobCategories);
   ui.positions = JSON.stringify(positions);
   ui.departments = JSON.stringify(departments);
+  ui.taxTypes = JSON.stringify(taxTypes);
   
   return ui.evaluate()
     .setTitle('日報兼経費精算システム')
@@ -148,7 +150,7 @@ function saveOrSubmitDailyReport(data, status) {
     var allowanceHours = parseFloat(settings.DAILY_ALLOWANCE_HOURS || 0);
     var allowanceAmount = parseFloat(settings.DAILY_ALLOWANCE_AMOUNT || 0);
 
-    if (allowanceHours > 0 && allowanceAmount > 0 && (totals.totalActiveMinutes / 60) >= allowanceHours) {
+    if (allowanceHours > 0 && allowanceAmount > 0 && totals.totalActiveHours >= allowanceHours) {
       var hasAllowance = false;
       for (var j = 0; j < expenses.length; j++) {
         if (expenses[j].itemCode === 'ALLOWANCE' || expenses[j].itemCode === '101') { 
@@ -179,6 +181,7 @@ function saveOrSubmitDailyReport(data, status) {
       reportId, header.date, userInfo.employeeInfo.name, header.remarks, 
       header.startMeter, header.endMeter, header.mileage, 
       totals.totalMovementHours, totals.totalMeetingHours, 
+      totals.totalCollectionHours,
       status, userInfo.employeeInfo.id, totalExpenseAmount, 
       (status === '申請中') ? new Date() : null, 
       null, null, null, null, null
@@ -194,7 +197,10 @@ function saveOrSubmitDailyReport(data, status) {
         exp.useDate, exp.timeSlot || '', exp.payee || '', exp.areaCode || '', 
         exp.taxExcludedAmount || null, exp.taxRate || null, exp.taxRateCustom || null, 
         exp.cardAmount || 0, exp.isCard ? 'あり' : '', exp.reimburseAmount || 0, 
-        exp.method || '仮払金'
+        exp.method || '仮払金', 
+        exp.taxType || '',
+        exp.taxClass || '', // 追加: 消費税分類区分
+        exp.taxCalcType || '' // 追加: 消費税計算区分
       ];
     });
 
@@ -238,15 +244,30 @@ function saveOrSubmitDailyReport(data, status) {
   }
 }
 
-function uploadReceiptImage(base64Image, originalFileName) {
+function uploadReceiptImage(base64DataUrl, originalFileName) {
   try {
     var folderId = '1VQgPXronOxngn40uiUVK2eRUPTWSWS4I';
     if (!folderId) throw new Error('フォルダIDが設定されていません。');
 
     var now = new Date();
     var timestamp = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
-    var fileName = timestamp + "_" + (originalFileName || 'receipt.png');
-    var blob = Utilities.newBlob(Utilities.base64Decode(base64Image.split(',')[1]), 'image/png', fileName);
+    
+    // データURLからMIMEタイプとデータを抽出
+    var matches = base64DataUrl.match(/^data:(.+);base64,(.+)$/);
+    if (!matches || matches.length < 3) throw new Error('データ形式が無効です。');
+    
+    var mimeType = matches[1];
+    var data = matches[2];
+    
+    // 拡張子の決定
+    var extension = 'png'; // デフォルト
+    if (mimeType === 'application/pdf') extension = 'pdf';
+    else if (mimeType === 'image/jpeg') extension = 'jpg';
+    else if (mimeType === 'image/png') extension = 'png';
+    
+    var fileName = timestamp + "_" + (originalFileName || ('receipt.' + extension));
+    
+    var blob = Utilities.newBlob(Utilities.base64Decode(data), mimeType, fileName);
     var folder = DriveApp.getFolderById(folderId);
     var file = folder.createFile(blob);
     
@@ -342,6 +363,9 @@ function getReportDetails(reportId) {
         reimburseAmount: exp['精算金額'] || 0,
         method: exp['精算方法'] || '仮払金',
         itemName: expenseItemsMap[exp['経費項目コード']] || exp['経費項目コード'],
+        taxType: exp['消費税区分コード'] || '',
+        taxClass: exp['消費税分類区分'] || '', // 追加
+        taxCalcType: exp['消費税計算区分'] || '' // 追加
       };
     });
 
@@ -428,6 +452,29 @@ function withdrawReport(reportId) {
     return updateReportStatus_(reportId, '一時保存', null, null);
   } catch (e) {
     return { status: "error", message: e.message };
+  }
+}
+
+// 追加: 一時保存データの削除機能
+function deleteSavedReport(reportId) {
+  var userInfo = getUserInfo_();
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var data = getSheetData_(SHEET_NAMES.HEADER, ss);
+  var targetReport = data.find(function(row) { return String(row['日報ID']) === String(reportId); });
+  
+  if (!targetReport) return { status: "error", message: "対象の日報が見つかりません。" };
+  if (String(targetReport['申請者社員番号']) !== String(userInfo.employeeInfo.id)) return { status: "error", message: "他人のデータを削除することはできません。" };
+  if (targetReport['承認ステータス'] !== '一時保存' && targetReport['承認ステータス'] !== '差戻し') return { status: "error", message: "「一時保存」または「差戻し」の状態のみ削除可能です。" };
+  
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    deleteReportData_(reportId, ss);
+    return { status: "success", message: "日報データを削除しました。" };
+  } catch (e) {
+    return { status: "error", message: "削除エラー: " + e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -595,28 +642,55 @@ function getReportDataForEdit(reportId) {
 function calculateActivityTotals_(activities) {
   var totalMovementMinutes = 0;
   var totalMeetingMinutes = 0;
+  var totalCollectionMinutes = 0; // 追加
   var totalActiveMinutes = 0;
 
-  if (!activities || activities.length === 0) return { totalMovementHours: 0, totalMeetingHours: 0, totalActiveMinutes: 0 };
+  if (!activities || activities.length === 0) return { totalMovementHours: 0, totalMeetingHours: 0, totalCollectionHours: 0, totalActiveHours: 0 };
 
   for (var i = 0; i < activities.length; i++) {
     var act = activities[i];
     if (!act.startTime || !act.endTime || !act.type) continue;
 
     try {
-      var start = new Date('1970/01/01 ' + act.startTime);
-      var end = new Date('1970/01/01 ' + act.endTime);
-      var diffMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+      var partsStart = act.startTime.split(':');
+      var partsEnd = act.endTime.split(':');
+      
+      if (partsStart.length === 2 && partsEnd.length === 2) {
+        var startH = parseInt(partsStart[0], 10);
+        var startM = parseInt(partsStart[1], 10);
+        var endH = parseInt(partsEnd[0], 10);
+        var endM = parseInt(partsEnd[1], 10);
 
-      if (diffMinutes > 0) {
-        if (act.type !== '休憩') totalActiveMinutes += diffMinutes;
-        if (act.type === '移動') totalMovementMinutes += diffMinutes;
-        else if (act.type === '商談') totalMeetingMinutes += diffMinutes;
+        var startTotalM = startH * 60 + startM;
+        var endTotalM = endH * 60 + endM;
+        var diffMinutes = endTotalM - startTotalM;
+
+        if (diffMinutes > 0) {
+          var type = String(act.type).trim();
+          
+          if (type.indexOf('移動') > -1) {
+             totalMovementMinutes += diffMinutes;
+             totalActiveMinutes += diffMinutes;
+          } else if (type.indexOf('商談') > -1) {
+             totalMeetingMinutes += diffMinutes;
+             totalActiveMinutes += diffMinutes;
+          } else if (type.indexOf('回収・搬入') > -1) { // 追加
+             totalCollectionMinutes += diffMinutes;
+             totalActiveMinutes += diffMinutes;
+          }
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      Logger.log('時間計算エラー: ' + e);
+    }
   }
 
-  return { totalMovementHours: totalMovementMinutes / 60.0, totalMeetingHours: totalMeetingMinutes / 60.0, totalActiveMinutes: totalActiveMinutes };
+  return { 
+    totalMovementHours: totalMovementMinutes / 60.0, 
+    totalMeetingHours: totalMeetingMinutes / 60.0, 
+    totalCollectionHours: totalCollectionMinutes / 60.0,
+    totalActiveHours: totalActiveMinutes / 60.0
+  };
 }
 
 function decompressActivities_(activitiesArray) {
@@ -729,7 +803,6 @@ function callKeiriApi_(systemType, reportId, details) {
     details: details
   };
 
-  // 修正: 401エラー回避のため認証トークンを付与
   var options = {
     'method': 'post',
     'contentType': 'application/json',
