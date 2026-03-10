@@ -641,6 +641,9 @@
                 
                 <div class="col-12">
                   <label for="M-receiptImage" class="form-label">領収書アップロード (画像/PDF)</label>
+                  <div id="receipt-amount-note" class="form-text text-warning" style="display:none;">
+                    <i class="bi bi-exclamation-triangle-fill"></i> 3万円以上の場合は領収書が必要です
+                  </div>
                   <!-- 修正: acceptにPDFを追加 -->
                   <input class="form-control" type="file" id="M-receiptImage" accept="image/*,application/pdf">
                 </div>
@@ -1301,6 +1304,7 @@
         if (payeeWrapper) { payeeWrapper.style.display = ''; document.getElementById('M-payee').required = false; }
         var receiptWrapper = document.getElementById('M-receiptImage').closest('.col-12');
         if (receiptWrapper) receiptWrapper.style.display = '';
+        document.getElementById('receipt-amount-note').style.display = 'none';
         var remarksEl = document.getElementById('M-remarks');
         if (remarksEl) { remarksEl.required = false; remarksEl.placeholder = '例: 会議のため'; }
         var mark = document.getElementById('remarks-required-mark');
@@ -1422,11 +1426,14 @@
 
         // 領収書
         var receiptWrapper = document.getElementById('M-receiptImage').closest('.col-12');
+        var receiptNote = document.getElementById('receipt-amount-note');
         if (receiptWrapper) {
           if (req && req['領収書等'] === '不要') {
             receiptWrapper.style.display = 'none';
+            if (receiptNote) receiptNote.style.display = 'none';
           } else {
             receiptWrapper.style.display = '';
+            if (receiptNote) receiptNote.style.display = (req && req['領収書等'] === '不要（3万円未満）') ? '' : 'none';
           }
         }
 
@@ -1575,6 +1582,14 @@
         if (reqForCheck && reqForCheck['備考'] === '必須' && !document.getElementById('M-remarks').value.trim()) {
           showCustomAlert('備考欄は必須です。\n' + (reqForCheck['備考例（変更候補）'] && reqForCheck['備考例（変更候補）'] !== '空欄' ? '例: ' + reqForCheck['備考例（変更候補）'] : '内容を入力してください。'));
           return;
+        }
+
+        if (reqForCheck && reqForCheck['領収書等'] === '不要（3万円未満）') {
+          var amountForCheck = parseFloat(document.getElementById('M-amount').value) || 0;
+          if (amountForCheck >= 30000 && !receiptUrlVal) {
+            showCustomAlert('金額が3万円以上のため領収書が必要です。アップロードしてから登録してください。');
+            return;
+          }
         }
 
         // 修正: 消費税区分コードを取得
