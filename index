@@ -1687,11 +1687,14 @@
       }
 
       function loadPendingReportsB(bg) {
-        if (!bg) showLoading(true);
         // チェック状態をリセット
         var selectAll = document.getElementById('B-select-all');
         if (selectAll) selectAll.checked = false;
         updateBulkSelectionB();
+
+        // 常にインラインスピナー表示（全画面オーバーレイなし）
+        var list = document.getElementById('B-approval-list-body');
+        list.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2" role="status"></span>読み込み中...</td></tr>';
 
         google.script.run.withSuccessHandler(function(d){
           var list = document.getElementById('B-approval-list-body');
@@ -1720,9 +1723,9 @@
             });
             list.innerHTML = rowsHtml;
           }
-          if (!bg) showLoading(false);
         }).withFailureHandler(function(e) {
-          if (!bg) showLoading(false);
+          var list = document.getElementById('B-approval-list-body');
+          list.innerHTML = '<tr><td colspan="5" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>読み込みに失敗しました。更新ボタンを押してください。</td></tr>';
           onApiError(e);
         }).getPendingReports();
       }
@@ -1916,10 +1919,19 @@
       }
 
       function loadMyReportsE() {
-        showLoading(true);
-        google.script.run.withSuccessHandler(function(data){
-          allMyReportsCache = data; filterReportsE(); showLoading(false);
-        }).getMyReports();
+        var list = document.getElementById('E-my-reports-list-body');
+        list.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2" role="status"></span>読み込み中...</td></tr>';
+        document.getElementById('E-no-reports-msg').style.display = 'none';
+        google.script.run
+          .withSuccessHandler(function(data) {
+            allMyReportsCache = data;
+            filterReportsE();
+          })
+          .withFailureHandler(function(e) {
+            list.innerHTML = '<tr><td colspan="10" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>読み込みに失敗しました。更新ボタンを押してください。</td></tr>';
+            onApiError(e);
+          })
+          .getMyReports();
       }
       
       // 修正: 削除ボタンの追加
