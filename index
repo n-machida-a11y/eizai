@@ -602,7 +602,7 @@
                 
                 <!-- 修正: 消費税区分マスタベースの選択肢に変更 -->
                 <div class="col-12" id="M-tax-wrapper">
-                  <label for="M-tax-type-select" class="form-label">消費税区分</label>
+                  <label for="M-tax-type-select" class="form-label">消費税区分 <small class="text-danger fw-normal">※領収書等に登録番号の記載がない場合は(免税)の消費税区分を選択すること。</small></label>
                   <div class="input-group">
                     <select class="form-select" id="M-tax-type-select">
                       <!-- JSで動的生成 -->
@@ -626,7 +626,7 @@
 
                 <div class="col-12">
                   <label for="M-remarks" class="form-label">備考（内容詳細など）</label>
-                  <input type="text" class="form-control" id="M-remarks" placeholder="例: 会議のため">
+                  <textarea class="form-control" id="M-remarks" rows="2" placeholder="例: 会議のため" style="resize: vertical;"></textarea>
                 </div>
                 
                 <hr class="my-2">
@@ -718,10 +718,15 @@
       var JOB_CATEGORIES_MASTER = safeParse('<?!= typeof jobCategories !== "undefined" ? jobCategories : "" ?>', []);
       var POSITIONS_MASTER = safeParse('<?!= typeof positions !== "undefined" ? positions : "" ?>', []);
       var DEPARTMENTS_MASTER = safeParse('<?!= typeof departments !== "undefined" ? departments : "" ?>', []);
-      var TAX_TYPES_MASTER = safeParse('<?!= typeof taxTypes !== "undefined" ? taxTypes : "" ?>', []); 
-      
-      var currentActivities = {}; 
-      var currentExpenses = [];   
+      var TAX_TYPES_MASTER = safeParse('<?!= typeof taxTypes !== "undefined" ? taxTypes : "" ?>', []);
+      var EXPENSE_REQUIREMENTS_MASTER = safeParse('<?!= typeof expenseRequirements !== "undefined" ? expenseRequirements : "" ?>', []);
+      var EXPENSE_PATTERNS_MASTER = safeParse('<?!= typeof expensePatterns !== "undefined" ? expensePatterns : "" ?>', []);
+
+      var currentActivities = {};
+      var currentExpenses = [];
+      var isUploading = false;
+      var expenseRequirementsMap = {};
+      var expensePatternMap = {};
       var TIME_SLOTS = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00"];
       var ACTIVITY_TYPES = ["", "出勤", "退社", "移動", "商談", "休憩", "在社", "宿泊", "回収・搬入", "その他"];
 
@@ -744,6 +749,7 @@
         
         initializeCustomModalsA();
         loadExpenseItemsMasterA();
+        buildExpenseMapsA();
         loadLodgingAreasMasterA();
         loadTaxTypesMasterA(); // 消費税区分の読み込み
         renderTimesheetA();
@@ -827,6 +833,18 @@
             var bsCollapse = bootstrap.Collapse.getInstance(navbar);
             if (bsCollapse && navbar.classList.contains('show')) bsCollapse.hide();
           });
+        });
+      }
+
+      function buildExpenseMapsA() {
+        expenseRequirementsMap = {};
+        expensePatternMap = {};
+        EXPENSE_REQUIREMENTS_MASTER.forEach(function(req) {
+          expenseRequirementsMap[String(req['経費項目コード'])] = req;
+        });
+        EXPENSE_PATTERNS_MASTER.forEach(function(pat) {
+          var key = String(pat['経費項目コード']) + '_' + String(pat['職種区分']);
+          expensePatternMap[key] = pat;
         });
       }
 
@@ -1224,6 +1242,13 @@
         
         document.getElementById('M-delete-expense').style.display = 'none';
         document.getElementById('M-useDate').value = document.getElementById('A-date').value || getTodayString();
+        // 支払先・領収書の表示をリセット
+        var payeeWrapper = document.getElementById('M-payee').closest('.col-12');
+        if (payeeWrapper) { payeeWrapper.style.display = ''; document.getElementById('M-payee').required = false; }
+        var receiptWrapper = document.getElementById('M-receiptImage').closest('.col-12');
+        if (receiptWrapper) receiptWrapper.style.display = '';
+        var remarksEl = document.getElementById('M-remarks');
+        if (remarksEl) remarksEl.placeholder = '例: 会議のため';
       }
 
       function getExpenseItemName(code) {
@@ -1232,7 +1257,7 @@
       }
       
       function onExpenseModalShowA() {}
-      function onExpenseModalHideA() {}
+      function onExpenseModalHideA() { isUploading = false; }
 
       // 修正: 画像のクライアント側圧縮処理 (高速化)
       function handleImageUploadA(event) {
@@ -1289,6 +1314,7 @@
 
       // アップロード共通処理
       function uploadToGas(data, fileName, isDataUrl) {
+          isUploading = true;
           showLoading(true, '領収書をアップロード中...');
           document.getElementById('M-submit-expense').disabled = true;
           
@@ -1308,16 +1334,63 @@
               document.getElementById('M-submit-expense').disabled = false;
               if (res.status === 'success') {
                   document.getElementById('M-receiptUrl').value = res.url;
+                  isUploading = false;
                   showCustomAlert('領収書のアップロードが完了しました。');
               }
-              else onApiError(res.message);
+              else { isUploading = false; onApiError(res.message); }
             })
             .withFailureHandler(function(error) {
+              isUploading = false;
               showLoading(false);
               document.getElementById('M-submit-expense').disabled = false;
               onApiError(error);
             })
             .uploadReceiptImage(data, fileName); // data is base64 string
+      }
+
+      function applyExpenseRequirementsA(itemCode) {
+        var req = expenseRequirementsMap[String(itemCode)];
+
+        // 支払先
+        var payeeWrapper = document.getElementById('M-payee').closest('.col-12');
+        if (payeeWrapper) {
+          if (req && req['支払先'] === '不要') {
+            payeeWrapper.style.display = 'none';
+            document.getElementById('M-payee').required = false;
+            document.getElementById('M-payee').value = '';
+          } else {
+            payeeWrapper.style.display = '';
+            document.getElementById('M-payee').required = (req && req['支払先'] === '必須');
+          }
+        }
+
+        // 領収書
+        var receiptWrapper = document.getElementById('M-receiptImage').closest('.col-12');
+        if (receiptWrapper) {
+          if (req && req['領収書等'] === '不要') {
+            receiptWrapper.style.display = 'none';
+          } else {
+            receiptWrapper.style.display = '';
+          }
+        }
+
+        // 備考プレースホルダー
+        var remarksEl = document.getElementById('M-remarks');
+        if (remarksEl) {
+          var placeholder = (req && req['備考例（変更候補）'] && req['備考例（変更候補）'] !== '空欄')
+            ? req['備考例（変更候補）']
+            : '例: 会議のため';
+          remarksEl.placeholder = placeholder;
+        }
+
+        // 消費税区分デフォルト設定（ユーザーの職種区分から）
+        var jobCat = String(EMPLOYEE_INFO.jobCategoryCode || '');
+        var patKey = String(itemCode) + '_' + jobCat;
+        var pattern = expensePatternMap[patKey];
+        if (pattern && pattern['消費税選択区分コード']) {
+          var taxSelect = document.getElementById('M-tax-type-select');
+          if (taxSelect) taxSelect.value = String(pattern['消費税選択区分コード']);
+        }
       }
 
       function onItemCodeChangeA() {
@@ -1342,21 +1415,22 @@
         currentExpenseLimit = null;
         if (itemCode === '101') {
           wrapper.style.display = 'none'; areaSelect.required = false; areaSelect.value = '';
-          var limit = getExpenseLimitA(itemCode);
-          if (limit!==null) updateKanmaInputA('M-amount', limit); else updateKanmaInputA('M-amount', '');
+          var limit101 = getExpenseLimitA(itemCode);
+          if (limit101!==null) updateKanmaInputA('M-amount', limit101); else updateKanmaInputA('M-amount', '');
         } else if (itemCode === '102') {
           wrapper.style.display = 'block'; areaSelect.required = true;
-          var limit = getExpenseLimitA(itemCode, areaSelect.value || '000000');
-          if (limit!==null) updateKanmaInputA('M-amount', limit); else updateKanmaInputA('M-amount', '');
+          var limit102 = getExpenseLimitA(itemCode, areaSelect.value || '000000');
+          if (limit102!==null) updateKanmaInputA('M-amount', limit102); else updateKanmaInputA('M-amount', '');
         } else {
           wrapper.style.display = 'none'; areaSelect.required = false;
           updateKanmaInputA('M-amount', '');
         }
+        applyExpenseRequirementsA(itemCode);
         handleTaxCalculationA(); // 再計算
         checkExpenseLimitA();
         calculateReimburseA();
       }
-      
+
       function onAreaCodeChangeA() { onItemCodeChangeA(); }
 
       function getExpenseLimitA(itemCode, areaCode) {
@@ -1414,6 +1488,7 @@
       }
 
       function addExpenseItemA() {
+        if (isUploading) { showCustomAlert('領収書のアップロードが完了するまでお待ちください。'); return; }
         var form = document.getElementById('expense-form');
         if (!form.checkValidity()) { form.classList.add('was-validated'); showCustomAlert('必須項目を入力してください。'); return; }
 
@@ -1430,7 +1505,14 @@
           showCustomAlert('領収書のアップロードが完了していません。\nしばらく待ってから再度「登録」ボタンを押してください。');
           return;
         }
-        
+
+        var itemCodeForCheck = document.getElementById('M-itemCode').value;
+        var reqForCheck = expenseRequirementsMap[String(itemCodeForCheck)];
+        if (reqForCheck && reqForCheck['領収書等'] === '必要' && !receiptUrlVal) {
+          showCustomAlert('この経費項目には領収書が必要です。アップロードしてから登録してください。');
+          return;
+        }
+
         // 修正: 消費税区分コードを取得
         var taxTypeSelect = document.getElementById('M-tax-type-select');
         var taxTypeVal = taxTypeSelect.value;
@@ -1647,7 +1729,7 @@
               expBody.innerHTML = '';
               if (d.expenses && d.expenses.length > 0) {
                 d.expenses.forEach(function(ex) {
-                  var urlLink = ex.receiptUrl ? '<a href="'+ex.receiptUrl+'" target="_blank"><i class="bi bi-link-45deg"></i></a>' : '-';
+                  var urlLink = ex.receiptUrl ? '<a href="'+ex.receiptUrl+'" onclick="window.open(this.href,\'receipt_window\',\'noopener,width=900,height=700\'); return false;"><i class="bi bi-link-45deg"></i></a>' : '-';
                   expBody.innerHTML += '<tr><td>'+ex.timeSlot+'</td><td>'+formatDateWithDay(ex.useDate)+'</td><td>'+ex.itemName+'</td><td>'+ex.payee+'</td><td>'+formatNumber(ex.amount)+'</td><td>'+(ex.method||'仮払金')+'</td><td>'+formatNumber(ex.cardAmount)+'</td><td>'+(ex.isCard?'あり':'')+'</td><td>'+formatNumber(ex.reimburseAmount)+'</td><td>'+ex.areaCode+'</td><td>'+ex.remarks+'</td><td>'+urlLink+'</td></tr>';
                 });
               } else expBody.innerHTML = '<tr><td colspan="12">なし</td></tr>';
@@ -1656,7 +1738,11 @@
               btnArea.style.display = 'none'; btnArea.innerHTML = '';
               document.getElementById('C-reportId').value = h['日報ID'];
               
-              if ((IS_CHECKER || IS_APPROVER) && backView === 'view-B-approval-list' && ['申請中','1次承認済','チェック済'].includes(h['承認ステータス'])) {
+              var isSelfApprovalUser = EMPLOYEE_INFO.approver2Id && String(EMPLOYEE_INFO.approver2Id) === String(EMPLOYEE_INFO.id);
+              var isApprovableStatus = ['申請中','1次承認済','チェック済'].includes(h['承認ステータス']);
+              var canApproveFromB = (IS_CHECKER || IS_APPROVER) && backView === 'view-B-approval-list';
+              var canSelfApproveFromE = isSelfApprovalUser && IS_APPROVER && backView === 'view-E-my-reports';
+              if ((canApproveFromB || canSelfApproveFromE) && isApprovableStatus) {
                 btnArea.innerHTML = '<button class="btn btn-danger me-2" onclick="handleRejectC()">差戻し</button><button class="btn btn-success" onclick="handleApproveC()">承認</button>';
                 btnArea.style.display = 'block';
               }
@@ -1676,7 +1762,7 @@
         showCustomAlert('承認しますか？', function() {
           showLoading(true);
           google.script.run.withSuccessHandler(function(res) {
-              showLoading(false); showCustomAlert(res.message, function(){ showView('view-B-approval-list'); });
+              showLoading(false); showCustomAlert(res.message, function(){ showView(viewC_ReturnView); });
           }).withFailureHandler(onApiError).approveReport(document.getElementById('C-reportId').value);
         });
       }
@@ -1684,7 +1770,7 @@
         showCustomPrompt('差戻し理由:', function(res) {
           if (!res) return;
           showLoading(true);
-          google.script.run.withSuccessHandler(function(r){ showLoading(false); showCustomAlert(r.message, function(){ showView('view-B-approval-list'); }); }).rejectReport(document.getElementById('C-reportId').value, res);
+          google.script.run.withSuccessHandler(function(r){ showLoading(false); showCustomAlert(r.message, function(){ showView(viewC_ReturnView); }); }).rejectReport(document.getElementById('C-reportId').value, res);
         });
       }
 
@@ -1795,7 +1881,7 @@
                 useDate = dateStr.replace(/-/g, '/');
               }
               var receiptLink = '-';
-              if (exp.receiptUrl) { receiptLink = '<a href="' + exp.receiptUrl + '" target="_blank"><i class="bi bi-paperclip"></i></a>'; }
+              if (exp.receiptUrl) { receiptLink = '<a href="' + exp.receiptUrl + '" onclick="window.open(this.href,\'receipt_window\',\'noopener,width=900,height=700\'); return false;"><i class="bi bi-paperclip"></i></a>'; }
               tr.innerHTML += '<td>' + useDate + '</td>';
               tr.innerHTML += '<td>' + (exp.itemName || '') + '</td>';
               tr.innerHTML += '<td class="text-end">' + formatNumber(exp.amount) + '</td>';

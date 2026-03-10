@@ -24,8 +24,46 @@ var SHEET_NAMES = {
   JOB_CATEGORIES: '職種区分マスタ',
   POSITIONS: '役職マスタ',
   DEPARTMENTS: '部門マスタ',
-  TAX_TYPES: '消費税区分マスタ'
+  TAX_TYPES: '消費税区分マスタ',
+  EXPENSE_REQUIREMENTS: '経費登録項目別要否',
+  EXPENSE_PATTERNS: '経費項目パターン'
 };
+
+// -----------------------------------------------
+// マスタデータキャッシュ
+// -----------------------------------------------
+
+function getMasterDataCached_() {
+  var cache = CacheService.getScriptCache();
+  var CACHE_KEY = 'MASTER_DATA_V2';
+  var cached = cache.get(CACHE_KEY);
+  if (cached) {
+    try { return JSON.parse(cached); } catch(e) {}
+  }
+
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var data = {
+    expenseItems:       getSheetData_(SHEET_NAMES.EXPENSE_ITEMS, ss),
+    travelRules:        getSheetData_(SHEET_NAMES.TRAVEL_RULES, ss),
+    lodgingAreas:       getSheetData_(SHEET_NAMES.LODGING_AREAS, ss),
+    jobCategories:      getSheetData_(SHEET_NAMES.JOB_CATEGORIES, ss),
+    positions:          getSheetData_(SHEET_NAMES.POSITIONS, ss),
+    departments:        getSheetData_(SHEET_NAMES.DEPARTMENTS, ss),
+    taxTypes:           getSheetData_(SHEET_NAMES.TAX_TYPES, ss),
+    expenseRequirements: getSheetData_(SHEET_NAMES.EXPENSE_REQUIREMENTS, ss),
+    expensePatterns:    getSheetData_(SHEET_NAMES.EXPENSE_PATTERNS, ss)
+  };
+
+  try {
+    var serialized = JSON.stringify(data);
+    if (serialized.length < 90000) {
+      cache.put(CACHE_KEY, serialized, 3600);
+    }
+  } catch(e) {
+    Logger.log('マスタキャッシュ書き込みエラー: ' + e);
+  }
+  return data;
+}
 
 // -----------------------------------------------
 // HTMLインクルード用ヘルパー
@@ -41,29 +79,23 @@ function include(filename) {
 
 function doGet(e) {
   var ui = HtmlService.createTemplateFromFile('index');
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  
   var userInfo = getUserInfo_();
   
-  var expenseItems = getSheetData_(SHEET_NAMES.EXPENSE_ITEMS, ss);
-  var travelRules = getSheetData_(SHEET_NAMES.TRAVEL_RULES, ss);
-  var lodgingAreas = getSheetData_(SHEET_NAMES.LODGING_AREAS, ss);
-  var jobCategories = getSheetData_(SHEET_NAMES.JOB_CATEGORIES, ss);
-  var positions = getSheetData_(SHEET_NAMES.POSITIONS, ss);
-  var departments = getSheetData_(SHEET_NAMES.DEPARTMENTS, ss);
-  var taxTypes = getSheetData_(SHEET_NAMES.TAX_TYPES, ss);
-  
-  ui.employeeInfo = JSON.stringify(userInfo.employeeInfo); 
+  var masterData = getMasterDataCached_();
+
+  ui.employeeInfo = JSON.stringify(userInfo.employeeInfo);
   ui.isChecker = userInfo.isChecker;
   ui.isApprover = userInfo.isApprover;
-  
-  ui.expenseItems = JSON.stringify(expenseItems);
-  ui.travelRules = JSON.stringify(travelRules);
-  ui.lodgingAreas = JSON.stringify(lodgingAreas);
-  ui.jobCategories = JSON.stringify(jobCategories);
-  ui.positions = JSON.stringify(positions);
-  ui.departments = JSON.stringify(departments);
-  ui.taxTypes = JSON.stringify(taxTypes);
+
+  ui.expenseItems = JSON.stringify(masterData.expenseItems);
+  ui.travelRules = JSON.stringify(masterData.travelRules);
+  ui.lodgingAreas = JSON.stringify(masterData.lodgingAreas);
+  ui.jobCategories = JSON.stringify(masterData.jobCategories);
+  ui.positions = JSON.stringify(masterData.positions);
+  ui.departments = JSON.stringify(masterData.departments);
+  ui.taxTypes = JSON.stringify(masterData.taxTypes);
+  ui.expenseRequirements = JSON.stringify(masterData.expenseRequirements);
+  ui.expensePatterns = JSON.stringify(masterData.expensePatterns);
   
   return ui.evaluate()
     .setTitle('日報兼経費精算システム')
@@ -71,7 +103,13 @@ function doGet(e) {
 }
 
 function getUserInfo_() {
-  var email = Session.getEffectiveUser().getEmail(); 
+  var email = Session.getEffectiveUser().getEmail();
+  var userCache = CacheService.getUserCache();
+  var userCacheKey = 'USER_INFO_V1';
+  var cachedUser = userCache.get(userCacheKey);
+  if (cachedUser) {
+    try { return JSON.parse(cachedUser); } catch(e) {}
+  }
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var data = getSheetData_(SHEET_NAMES.EMPLOYEES, ss);
   
@@ -100,6 +138,7 @@ function getUserInfo_() {
       break;
     }
   }
+  try { userCache.put(userCacheKey, JSON.stringify(userInfo), 600); } catch(e) {}
   return userInfo;
 }
 
@@ -288,27 +327,30 @@ function getPendingReports() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var data = getSheetData_(SHEET_NAMES.HEADER, ss);
   var currentUser = getUserInfo_();
-  var myName = currentUser.employeeInfo.name;
-  
+  var myId = String(currentUser.employeeInfo.id || '');
+
   var pending = data.filter(function(row) {
     var status = row['承認ステータス'];
-    var applicantId = row['申請者社員番号'];
+    var applicantId = String(row['申請者社員番号'] || '');
     var applicantData = getEmployeeById_(applicantId, ss);
     if (!applicantData) return false;
-    
-    var approver1 = applicantData['承認者名1'];
-    var approver2 = applicantData['承認者名2'];
-    
-    if (approver1) {
-      if (status === '申請中') return (myName === approver1);
-      else if (status === '1次承認済') return (myName === approver2);
+
+    var approver1Id = String(applicantData['承認者番号1'] || '');
+    var approver2Id = String(applicantData['承認者番号2'] || '');
+
+    // 自己承認: 承認者番号2が申請者本人で、現在のユーザーが申請者本人の場合
+    var isSelfApproval = approver2Id && approver2Id === applicantId && applicantId === myId;
+
+    if (approver1Id) {
+      if (status === '申請中') return (myId === approver1Id) || isSelfApproval;
+      else if (status === '1次承認済') return (myId === approver2Id);
     } else {
-      if (status === '申請中') return (myName === approver2);
+      if (status === '申請中') return (myId === approver2Id);
     }
-    if (status === 'チェック済') return (myName === approver2);
+    if (status === 'チェック済') return (myId === approver2Id);
     return false;
   });
-  
+
   return { pending: pending };
 }
 
@@ -494,30 +536,40 @@ function approveReport(reportId) {
     var applicantData = getEmployeeById_(applicantId, ss);
     if (!applicantData) throw new Error('申請者データが見つかりません。');
     
-    var approver1 = applicantData['承認者名1'];
-    var approver2 = applicantData['承認者名2'];
-    var myName = userInfo.employeeInfo.name;
+    var approver1Id = String(applicantData['承認者番号1'] || '');
+    var approver2Id = String(applicantData['承認者番号2'] || '');
+    var myId = String(userInfo.employeeInfo.id || '');
     var nextStatus = '';
     var isFinal = false;
-    
-    if (approver1) {
+
+    // 自己承認: 承認者番号2が申請者本人で、現在のユーザーが申請者本人の場合
+    var isSelfApproval = approver2Id && approver2Id === String(applicantId) && String(applicantId) === myId;
+
+    if (approver1Id) {
       if (currentStatus === '申請中') {
-        if (myName !== approver1) throw new Error('あなたには1次承認権限がありません。');
-        nextStatus = '1次承認済';
+        if (isSelfApproval) {
+          // 自己承認: 承認者1のステップをスキップして直接最終承認
+          nextStatus = '精算申請済';
+          isFinal = true;
+        } else if (myId === approver1Id) {
+          nextStatus = '1次承認済';
+        } else {
+          throw new Error('あなたには1次承認権限がありません。');
+        }
       } else if (currentStatus === '1次承認済') {
-        if (myName !== approver2) throw new Error('あなたには最終承認権限がありません。');
+        if (myId !== approver2Id) throw new Error('あなたには最終承認権限がありません。');
         nextStatus = '精算申請済';
         isFinal = true;
       }
     } else {
       if (currentStatus === '申請中') {
-        if (myName !== approver2) throw new Error('あなたには承認権限がありません。');
+        if (myId !== approver2Id) throw new Error('あなたには承認権限がありません。');
         nextStatus = '精算申請済';
         isFinal = true;
       }
     }
-    
-    if (currentStatus === 'チェック済' && myName === approver2) {
+
+    if (currentStatus === 'チェック済' && myId === approver2Id) {
       nextStatus = '精算申請済';
       isFinal = true;
     }
