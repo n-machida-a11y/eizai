@@ -720,7 +720,7 @@
       var EXPENSE_PATTERNS_MASTER = [];
 
       // localStorageキャッシュ設定
-      var LS_CACHE_KEY = 'eizai_init_v1';
+      var LS_CACHE_KEY = 'eizai_init_v2'; // v2: 経費項目マスタに要否列追加対応
       var LS_CACHE_TTL = 3600000; // 1時間
 
       function loadFromLocalCache() {
