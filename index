@@ -44,7 +44,8 @@
         text-align: center;
         background-color: #f8f9fa;
       }
-      .timesheet-table .type-col { width: 140px; }
+      .timesheet-table .type-col { width: 110px; }
+      .timesheet-table .content-col { min-width: 160px; }
       .timesheet-table .expense-col {
         width: 60px;
         text-align: center;
@@ -128,6 +129,11 @@
       }
       
       .hidden-number-input { display: none; }
+
+      #customAlertModal,
+      #customPromptModal {
+        z-index: 10010 !important;
+      }
     </style>
 
   </head>
@@ -584,7 +590,7 @@
                 <div class="col-12 col-md-6 d-flex align-items-center mt-4">
                   <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" role="switch" id="M-isCard">
-                    <label class="form-check-label fw-bold" for="M-isCard">カード利用</label>
+                    <label class="form-check-label fw-bold" for="M-isCard">会社カード利用</label>
                   </div>
                 </div>
 
@@ -770,7 +776,8 @@
 
         initializeKanmaInputsA();
         document.getElementById('C-back-button').addEventListener('click', function() { showView(viewC_ReturnView); });
-        showView('view-A-daily-report');
+        var lastView = sessionStorage.getItem('lastView') || 'view-E-my-reports';
+        showView(lastView);
 
         // 修正: 初期ロード時は裏で承認待ちを取得するが、フラグ管理などは今回省略し、単純に非同期コール
         if (IS_CHECKER || IS_APPROVER) loadPendingReportsB(true);
@@ -876,6 +883,18 @@
 
       function initializeCustomModalsA() {
         customAlertModalInstance = new bootstrap.Modal(document.getElementById('customAlertModal'));
+        ['customAlertModal', 'customPromptModal'].forEach(function(id) {
+          document.getElementById(id).addEventListener('show.bs.modal', function() {
+            var self = this;
+            setTimeout(function() {
+              var allBackdrops = document.querySelectorAll('.modal-backdrop');
+              if (allBackdrops.length > 0) {
+                allBackdrops[allBackdrops.length - 1].style.zIndex = '10009';
+              }
+              self.style.zIndex = '10010';
+            }, 10);
+          });
+        });
         document.getElementById('customAlertOkButton').addEventListener('click', function() {
           if (typeof customAlertCallback === 'function') { customAlertCallback(); customAlertCallback = null; }
         });
@@ -908,6 +927,10 @@
       }
 
       function showView(viewId) {
+        // 主要画面のみ sessionStorage に保存（詳細画面Cは除外）
+        if (['view-A-daily-report', 'view-B-approval-list', 'view-E-my-reports'].indexOf(viewId) !== -1) {
+          sessionStorage.setItem('lastView', viewId);
+        }
         document.querySelectorAll('.app-view').forEach(function(view) { view.classList.remove('active'); });
         document.querySelectorAll('#nav-links .nav-link').forEach(function(link) {
           if (link.dataset.view === viewId) link.classList.add('active'); else link.classList.remove('active');
@@ -1100,14 +1123,19 @@
       function autoFillMovementA() {
         var allSelects = document.querySelectorAll('.A-activity-type-select');
         var first = -1, last = -1;
-        allSelects.forEach(function(sel, idx) { 
-            if (sel.value) { if (first===-1) first=idx; last=idx; } 
+        allSelects.forEach(function(sel, idx) {
+            if (sel.value) { if (first===-1) first=idx; last=idx; }
         });
         if (first === -1) return;
         for (var i = first + 1; i < last; i++) {
           if (!allSelects[i].value) {
-            allSelects[i].value = '移動';
-            updateActivityA(allSelects[i].dataset.time, 'type', '移動');
+            // 直前の入力値を検索
+            var prevValue = '';
+            for (var j = i - 1; j >= first; j--) {
+              if (allSelects[j].value) { prevValue = allSelects[j].value; break; }
+            }
+            allSelects[i].value = prevValue;
+            updateActivityA(allSelects[i].dataset.time, 'type', prevValue);
             var otherInput = document.querySelector('.A-activity-type-other[data-time="' + allSelects[i].dataset.time + '"]');
             if(otherInput) otherInput.style.display = 'none';
           }
@@ -1809,7 +1837,11 @@
             document.getElementById('A-reportId').value = d.header['日報ID'];
             document.getElementById('A-date').value = d.header['日付'].replace(/\//g,'-');
             document.getElementById('A-remarks').value = d.header['備考'];
-            
+            document.getElementById('A-startMeter').value = d.header['始時メーター'] || '';
+            document.getElementById('A-endMeter').value = d.header['終時メーター'] || '';
+            var savedMileage = parseFloat(d.header['本日の走行距離'] || d.header['走行距離'] || '0') || 0;
+            document.getElementById('A-mileageDisplay').textContent = savedMileage + ' km';
+
             currentActivities = d.activities || {};
             currentExpenses = d.expenses;
             renderTimesheetA();
