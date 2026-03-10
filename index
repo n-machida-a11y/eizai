@@ -1437,9 +1437,8 @@
           remarksEl.required = isRemarksRequired;
           var mark = document.getElementById('remarks-required-mark');
           if (mark) mark.style.display = isRemarksRequired ? '' : 'none';
-          var placeholder = (req && req['備考例（変更候補）'] && req['備考例（変更候補）'] !== '空欄')
-            ? req['備考例（変更候補）']
-            : '例: 会議のため';
+          var bikoEx = req ? String(req['備考例（変更候補）'] || '').trim() : '';
+          var placeholder = (bikoEx && bikoEx !== '空欄') ? bikoEx : '例: 会議のため';
           remarksEl.placeholder = placeholder;
         }
 
