@@ -286,6 +286,8 @@ function saveOrSubmitDailyReport(data, status) {
       }
     }
 
+    // 日報一覧キャッシュをクリア
+    try { CacheService.getUserCache().remove('MY_REPORTS_V1'); } catch(e) {}
     return { status: "success", message: status + "が完了しました。", reportId: reportId };
 
   } catch (e) {
@@ -342,10 +344,17 @@ function getPendingReports() {
   var currentUser = getUserInfo_();
   var myId = String(currentUser.employeeInfo.id || '');
 
+  // 社員マスタを1回だけ読み込みマップ化（N+1クエリを解消）
+  var employeesData = getSheetData_(SHEET_NAMES.EMPLOYEES, ss);
+  var employeeMap = {};
+  employeesData.forEach(function(emp) {
+    employeeMap[String(emp['社員番号'])] = emp;
+  });
+
   var pending = data.filter(function(row) {
     var status = row['承認ステータス'];
     var applicantId = String(row['申請者社員番号'] || '');
-    var applicantData = getEmployeeById_(applicantId, ss);
+    var applicantData = employeeMap[applicantId]; // O(1)ルックアップ
     if (!applicantData) return false;
 
     var approver1Id = String(applicantData['承認者番号1'] || '');
@@ -504,7 +513,9 @@ function withdrawReport(reportId) {
   if (targetReport['承認ステータス'] !== '申請中') return { status: "error", message: "「申請中」以外のステータスは取り下げできません。" };
   
   try {
-    return updateReportStatus_(reportId, '一時保存', null, null);
+    var result = updateReportStatus_(reportId, '一時保存', null, null);
+    try { CacheService.getUserCache().remove('MY_REPORTS_V1'); } catch(e) {}
+    return result;
   } catch (e) {
     return { status: "error", message: e.message };
   }
@@ -525,6 +536,7 @@ function deleteSavedReport(reportId) {
   lock.waitLock(10000);
   try {
     deleteReportData_(reportId, ss);
+    try { CacheService.getUserCache().remove('MY_REPORTS_V1'); } catch(e) {}
     return { status: "success", message: "日報データを削除しました。" };
   } catch (e) {
     return { status: "error", message: "削除エラー: " + e.message };
@@ -631,43 +643,62 @@ function getMyReports() {
     var targetEmployeeId = userInfo.employeeInfo.id;
     if (!targetEmployeeId) return [];
 
+    // ユーザーキャッシュ確認（2分間）
+    var cache = CacheService.getUserCache();
+    var cacheKey = 'MY_REPORTS_V1';
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      try { return JSON.parse(cached); } catch(e) {}
+    }
+
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var allHeaders = getSheetData_(SHEET_NAMES.HEADER, ss);
     var allExpenses = getSheetData_(SHEET_NAMES.EXPENSES, ss);
-    var expenseItemsMaster = getSheetData_(SHEET_NAMES.EXPENSE_ITEMS, ss);
+
+    // 経費項目マスタはサーバーキャッシュから取得（シート再読み込み不要）
+    var masterData = getMasterDataCached_();
     var itemMap = {};
-    expenseItemsMaster.forEach(function(item) { itemMap[item['経費項目コード']] = item['経費項目']; });
+    masterData.expenseItems.forEach(function(item) {
+      itemMap[item['経費項目コード']] = item['経費項目'];
+    });
 
-    var idxApplicant = '申請者社員番号';
+    // 経費明細をレポートIDでマップ化（O(n²)→O(n)に改善）
+    var expensesByReportId = {};
+    allExpenses.forEach(function(exp) {
+      var rId = String(exp['日報ID']);
+      if (!expensesByReportId[rId]) expensesByReportId[rId] = [];
+      expensesByReportId[rId].push({
+        itemName: itemMap[exp['経費項目コード']] || exp['経費項目コード'],
+        amount:     exp['金額'],
+        payee:      exp['支払先'],
+        remarks:    exp['備考'],
+        useDate:    exp['利用日'],
+        receiptUrl: exp['領収書URL'],
+        method:     exp['精算方法'] || '仮払金'
+      });
+    });
+
     var myReports = [];
-    
     for (var i = 0; i < allHeaders.length; i++) {
-      if (String(allHeaders[i][idxApplicant]) === String(targetEmployeeId)) {
-        var rId = allHeaders[i]['日報ID'];
-        var reportExpenses = allExpenses.filter(function(exp) {
-          return String(exp['日報ID']) === String(rId);
-        }).map(function(exp) {
-           return {
-             itemName: itemMap[exp['経費項目コード']] || exp['経費項目コード'],
-             amount: exp['金額'],
-             payee: exp['支払先'], 
-             remarks: exp['備考'],
-             useDate: exp['利用日'], 
-             receiptUrl: exp['領収書URL'],
-             method: exp['精算方法'] || '仮払金'
-           };
-        });
-
+      if (String(allHeaders[i]['申請者社員番号']) === String(targetEmployeeId)) {
+        var rId = String(allHeaders[i]['日報ID']);
         myReports.push({
-          '日報ID': rId,
-          '日付': allHeaders[i]['日付'],
+          '日報ID':       rId,
+          '日付':         allHeaders[i]['日付'],
           '承認ステータス': allHeaders[i]['承認ステータス'],
-          '合計経費': allHeaders[i]['合計経費'],
-          '備考': allHeaders[i]['備考'],
-          'expenses': reportExpenses
+          '合計経費':      allHeaders[i]['合計経費'],
+          '備考':         allHeaders[i]['備考'],
+          'expenses':     expensesByReportId[rId] || []
         });
       }
     }
+
+    // ユーザーキャッシュに保存（2分）
+    try {
+      var serialized = JSON.stringify(myReports);
+      if (serialized.length < 90000) cache.put(cacheKey, serialized, 120);
+    } catch(e) {}
+
     return myReports;
 
   } catch (e) {
