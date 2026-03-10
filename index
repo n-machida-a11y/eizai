@@ -570,7 +570,7 @@
                 </div>
 
                 <div class="col-12 col-md-6">
-                  <label for="M-method" class="form-label">精算方法</label>
+                  <label for="M-method" class="form-label">精算方法 <span class="text-danger">*</span></label>
                   <select class="form-select" id="M-method">
                     <option value="仮払金" selected>仮払金</option>
                     <option value="現金">現金</option>
@@ -610,7 +610,7 @@
                 
                 <!-- 修正: 消費税区分マスタベースの選択肢に変更 -->
                 <div class="col-12" id="M-tax-wrapper">
-                  <label for="M-tax-type-select" class="form-label">消費税区分 <small class="text-danger fw-normal">※領収書等に登録番号の記載がない場合は(免税)の消費税区分を選択すること。</small></label>
+                  <label for="M-tax-type-select" class="form-label">消費税区分 <span class="text-danger">*</span> <small class="text-danger fw-normal">※領収書等に登録番号の記載がない場合は(免税)の消費税区分を選択すること。</small></label>
                   <div class="input-group">
                     <select class="form-select" id="M-tax-type-select">
                       <!-- JSで動的生成 -->
@@ -633,7 +633,7 @@
                 </div>
 
                 <div class="col-12">
-                  <label for="M-remarks" class="form-label">備考（内容詳細など）</label>
+                  <label for="M-remarks" class="form-label">備考（内容詳細など）<span id="remarks-required-mark" class="text-danger" style="display:none;"> *</span></label>
                   <textarea class="form-control" id="M-remarks" rows="2" placeholder="例: 会議のため" style="resize: vertical;"></textarea>
                 </div>
                 
@@ -1302,7 +1302,9 @@
         var receiptWrapper = document.getElementById('M-receiptImage').closest('.col-12');
         if (receiptWrapper) receiptWrapper.style.display = '';
         var remarksEl = document.getElementById('M-remarks');
-        if (remarksEl) remarksEl.placeholder = '例: 会議のため';
+        if (remarksEl) { remarksEl.required = false; remarksEl.placeholder = '例: 会議のため'; }
+        var mark = document.getElementById('remarks-required-mark');
+        if (mark) mark.style.display = 'none';
       }
 
       function getExpenseItemName(code) {
@@ -1428,9 +1430,13 @@
           }
         }
 
-        // 備考プレースホルダー
+        // 備考（必須/任意の切替 + プレースホルダー）
         var remarksEl = document.getElementById('M-remarks');
         if (remarksEl) {
+          var isRemarksRequired = req && req['備考'] === '必須';
+          remarksEl.required = isRemarksRequired;
+          var mark = document.getElementById('remarks-required-mark');
+          if (mark) mark.style.display = isRemarksRequired ? '' : 'none';
           var placeholder = (req && req['備考例（変更候補）'] && req['備考例（変更候補）'] !== '空欄')
             ? req['備考例（変更候補）']
             : '例: 会議のため';
@@ -1564,6 +1570,11 @@
         var reqForCheck = expenseRequirementsMap[String(itemCodeForCheck)];
         if (reqForCheck && reqForCheck['領収書等'] === '必要' && !receiptUrlVal) {
           showCustomAlert('この経費項目には領収書が必要です。アップロードしてから登録してください。');
+          return;
+        }
+
+        if (reqForCheck && reqForCheck['備考'] === '必須' && !document.getElementById('M-remarks').value.trim()) {
+          showCustomAlert('備考欄は必須です。\n' + (reqForCheck['備考例（変更候補）'] && reqForCheck['備考例（変更候補）'] !== '空欄' ? '例: ' + reqForCheck['備考例（変更候補）'] : '内容を入力してください。'));
           return;
         }
 
