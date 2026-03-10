@@ -115,6 +115,29 @@ function getInitialData() {
   };
 }
 
+function getInitialDataWithPending() {
+  var userInfo = getUserInfo_();
+  var masterData = getMasterDataCached_();
+  var initialData = {
+    employeeInfo:        userInfo.employeeInfo,
+    isChecker:           userInfo.isChecker,
+    isApprover:          userInfo.isApprover,
+    expenseItems:        masterData.expenseItems,
+    travelRules:         masterData.travelRules,
+    lodgingAreas:        masterData.lodgingAreas,
+    jobCategories:       masterData.jobCategories,
+    positions:           masterData.positions,
+    departments:         masterData.departments,
+    taxTypes:            masterData.taxTypes,
+    expenseRequirements: masterData.expenseRequirements,
+    expensePatterns:     masterData.expensePatterns
+  };
+  var pendingReports = (userInfo.isChecker || userInfo.isApprover)
+    ? getPendingReports()
+    : null;
+  return { initialData: initialData, pendingReports: pendingReports };
+}
+
 function getUserInfo_() {
   var email = Session.getEffectiveUser().getEmail();
   var userCache = CacheService.getUserCache();
@@ -404,9 +427,9 @@ function getReportDetails(reportId) {
     var expensesData = getSheetData_(SHEET_NAMES.EXPENSES, ss);
     var expenses = expensesData.filter(function(row) { return String(row['日報ID']) === String(reportId); });
     
-    var expenseItemsMaster = getSheetData_(SHEET_NAMES.EXPENSE_ITEMS, ss);
+    var masterData = getMasterDataCached_();
     var expenseItemsMap = {};
-    expenseItemsMaster.forEach(function(item) { expenseItemsMap[item['経費項目コード']] = item['経費項目']; });
+    masterData.expenseItems.forEach(function(item) { expenseItemsMap[item['経費項目コード']] = item['経費項目']; });
     
     expenses = expenses.map(function(exp) {
       return {
@@ -631,6 +654,20 @@ function rejectReport(reportId, rejectionReason) {
   } catch (e) {
     return { status: "error", message: e.message };
   }
+}
+
+function approveReportAndGetPending(reportId) {
+  var result = approveReport(reportId);
+  if (result.status === 'error') return result;
+  result.pendingReports = getPendingReports();
+  return result;
+}
+
+function rejectReportAndGetPending(reportId, rejectionReason) {
+  var result = rejectReport(reportId, rejectionReason);
+  if (result.status === 'error') return result;
+  result.pendingReports = getPendingReports();
+  return result;
 }
 
 // -----------------------------------------------
