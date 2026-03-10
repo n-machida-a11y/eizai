@@ -159,15 +159,13 @@
               </a>
             </li>
             
-            <? if (isChecker || isApprover) { ?>
-            <li class="nav-item">
+            <li class="nav-item" id="nav-B-approval-list" style="display:none;">
               <a class="nav-link" href="#" data-view="view-B-approval-list">
-                <i class="bi bi-check2-circle"></i> 
+                <i class="bi bi-check2-circle"></i>
                 承認待ち一覧
                 <span class="badge bg-danger" id="approval-count-badge"></span>
               </a>
             </li>
-            <? } ?>
           </ul>
           <div class="navbar-text text-white">
             <span id="user-info-display"></span> <i class="bi bi-person-circle"></i>
@@ -707,30 +705,77 @@
       // グローバル変数定義 (サーバーサイド変数の安全な受け取り)
       // -------------------------------------------------------------
       
-      // JSON.parseのエラー回避用ヘルパー
-      function safeParse(str, fallback) {
+      // マスタデータ (getInitialData() で非同期取得・localStorageにキャッシュ)
+      var EMPLOYEE_INFO = {};
+      var IS_CHECKER = false;
+      var IS_APPROVER = false;
+      var EXPENSE_ITEMS_MASTER = [];
+      var TRAVEL_RULES_MASTER = [];
+      var LODGING_AREAS_MASTER = [];
+      var JOB_CATEGORIES_MASTER = [];
+      var POSITIONS_MASTER = [];
+      var DEPARTMENTS_MASTER = [];
+      var TAX_TYPES_MASTER = [];
+      var EXPENSE_REQUIREMENTS_MASTER = [];
+      var EXPENSE_PATTERNS_MASTER = [];
+
+      // localStorageキャッシュ設定
+      var LS_CACHE_KEY = 'eizai_init_v1';
+      var LS_CACHE_TTL = 3600000; // 1時間
+
+      function loadFromLocalCache() {
         try {
-          return (str && str !== 'undefined') ? JSON.parse(str) : fallback;
-        } catch (e) {
-          console.warn('JSON Parse Error:', e);
-          return fallback;
-        }
+          var item = localStorage.getItem(LS_CACHE_KEY);
+          if (!item) return null;
+          var parsed = JSON.parse(item);
+          if (!parsed.ts || (Date.now() - parsed.ts) > LS_CACHE_TTL) return null;
+          return parsed.data;
+        } catch(e) { return null; }
       }
 
-      // サーバーサイド変数の受け取り (存在しない場合はデフォルト値を使用)
-      var EMPLOYEE_INFO = safeParse('<?!= typeof employeeInfo !== "undefined" ? employeeInfo : "" ?>', {});
-      var IS_CHECKER = <?!= typeof isChecker !== "undefined" ? isChecker : "false" ?>;
-      var IS_APPROVER = <?!= typeof isApprover !== "undefined" ? isApprover : "false" ?>;
-      
-      var EXPENSE_ITEMS_MASTER = safeParse('<?!= typeof expenseItems !== "undefined" ? expenseItems : "" ?>', []);
-      var TRAVEL_RULES_MASTER = safeParse('<?!= typeof travelRules !== "undefined" ? travelRules : "" ?>', []);
-      var LODGING_AREAS_MASTER = safeParse('<?!= typeof lodgingAreas !== "undefined" ? lodgingAreas : "" ?>', []);
-      var JOB_CATEGORIES_MASTER = safeParse('<?!= typeof jobCategories !== "undefined" ? jobCategories : "" ?>', []);
-      var POSITIONS_MASTER = safeParse('<?!= typeof positions !== "undefined" ? positions : "" ?>', []);
-      var DEPARTMENTS_MASTER = safeParse('<?!= typeof departments !== "undefined" ? departments : "" ?>', []);
-      var TAX_TYPES_MASTER = safeParse('<?!= typeof taxTypes !== "undefined" ? taxTypes : "" ?>', []);
-      var EXPENSE_REQUIREMENTS_MASTER = safeParse('<?!= typeof expenseRequirements !== "undefined" ? expenseRequirements : "" ?>', []);
-      var EXPENSE_PATTERNS_MASTER = safeParse('<?!= typeof expensePatterns !== "undefined" ? expensePatterns : "" ?>', []);
+      function saveToLocalCache(data) {
+        try {
+          localStorage.setItem(LS_CACHE_KEY, JSON.stringify({ data: data, ts: Date.now() }));
+        } catch(e) {}
+      }
+
+      function applyInitialData(data) {
+        EMPLOYEE_INFO              = data.employeeInfo        || {};
+        IS_CHECKER                 = data.isChecker           || false;
+        IS_APPROVER                = data.isApprover          || false;
+        EXPENSE_ITEMS_MASTER       = data.expenseItems        || [];
+        TRAVEL_RULES_MASTER        = data.travelRules         || [];
+        LODGING_AREAS_MASTER       = data.lodgingAreas        || [];
+        JOB_CATEGORIES_MASTER      = data.jobCategories       || [];
+        POSITIONS_MASTER           = data.positions           || [];
+        DEPARTMENTS_MASTER         = data.departments         || [];
+        TAX_TYPES_MASTER           = data.taxTypes            || [];
+        EXPENSE_REQUIREMENTS_MASTER = data.expenseRequirements || [];
+        EXPENSE_PATTERNS_MASTER    = data.expensePatterns      || [];
+
+        // ユーザー名表示
+        document.getElementById('user-info-display').textContent = EMPLOYEE_INFO.name || 'ゲスト';
+
+        // 承認担当者のみ承認待ち一覧ナビを表示
+        if (IS_CHECKER || IS_APPROVER) {
+          document.getElementById('nav-B-approval-list').style.display = '';
+        }
+
+        // マスタデータ依存の初期化
+        loadExpenseItemsMasterA();
+        buildExpenseMapsA();
+        loadLodgingAreasMasterA();
+        loadTaxTypesMasterA();
+        renderTimesheetA();
+        loadRecentVisitPlaces();
+
+        // 初期画面表示
+        var lastView = sessionStorage.getItem('lastView') || 'view-E-my-reports';
+        showView(lastView);
+
+        // 承認担当者は承認件数をバックグラウンド取得
+        if (IS_CHECKER || IS_APPROVER) loadPendingReportsB(true);
+      }
 
       var currentActivities = {};
       var currentExpenses = [];
@@ -750,56 +795,57 @@
       var allMyReportsCache = [];
 
       document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('user-info-display').textContent = EMPLOYEE_INFO.name || 'ゲスト';
+        // データ非依存のUI初期化（即時実行）
         buildNavigation();
-        
         expenseModalInstance = new bootstrap.Modal(document.getElementById('expenseModal'));
         document.getElementById('expenseModal').addEventListener('shown.bs.modal', onExpenseModalShowA);
         document.getElementById('expenseModal').addEventListener('hidden.bs.modal', onExpenseModalHideA);
-        
         initializeCustomModalsA();
-        loadExpenseItemsMasterA();
-        buildExpenseMapsA();
-        loadLodgingAreasMasterA();
-        loadTaxTypesMasterA(); // 消費税区分の読み込み
-        renderTimesheetA();
         setupMileageCalculatorA();
-        loadRecentVisitPlaces();
 
         document.getElementById('M-receiptImage').addEventListener('change', handleImageUploadA);
         document.getElementById('M-itemCode').addEventListener('change', onItemCodeChangeA);
         document.getElementById('M-areaCode').addEventListener('change', onAreaCodeChangeA);
-        
         document.getElementById('M-amount').addEventListener('input', function(e) {
-            handleTaxCalculationA(e);
-            calculateReimburseA();
+          handleTaxCalculationA(e); calculateReimburseA();
         });
         document.getElementById('M-cardAmount').addEventListener('input', calculateReimburseA);
-        
-        // 修正: 消費税区分変更時のイベント
         document.getElementById('M-tax-type-select').addEventListener('change', handleTaxCalculationA);
-        
         document.getElementById('M-isCard').addEventListener('change', function(e) {
-            var wrapper = document.getElementById('M-card-wrapper');
-            if (e.target.checked) {
-                wrapper.style.display = 'block';
-            } else {
-                wrapper.style.display = 'none';
-                updateKanmaInputA('M-cardAmount', '');
-            }
-            calculateReimburseA();
+          var wrapper = document.getElementById('M-card-wrapper');
+          wrapper.style.display = e.target.checked ? 'block' : 'none';
+          if (!e.target.checked) updateKanmaInputA('M-cardAmount', '');
+          calculateReimburseA();
         });
-
         initializeKanmaInputsA();
         document.getElementById('C-back-button').addEventListener('click', function() { showView(viewC_ReturnView); });
-        var lastView = sessionStorage.getItem('lastView') || 'view-E-my-reports';
-        showView(lastView);
 
-        // 修正: 初期ロード時は裏で承認待ちを取得するが、フラグ管理などは今回省略し、単純に非同期コール
-        if (IS_CHECKER || IS_APPROVER) loadPendingReportsB(true);
+        // localStorageキャッシュ確認
+        var cached = loadFromLocalCache();
+        if (cached) {
+          // キャッシュあり → 即時表示、バックグラウンドで静かに更新
+          applyInitialData(cached);
+          google.script.run
+            .withSuccessHandler(function(data) { saveToLocalCache(data); })
+            .withFailureHandler(function(e) { console.warn('バックグラウンドデータ更新失敗:', e); })
+            .getInitialData();
+        } else {
+          // 初回 or キャッシュ切れ → ローディング表示してデータ取得
+          showLoading(true, 'データを読み込み中...');
+          google.script.run
+            .withSuccessHandler(function(data) {
+              saveToLocalCache(data);
+              applyInitialData(data);
+              showLoading(false);
+            })
+            .withFailureHandler(function(e) {
+              showLoading(false);
+              onApiError(e);
+            })
+            .getInitialData();
+        }
       });
 
-      // ... existing code for loadRecentVisitPlaces ...
       function loadRecentVisitPlaces() {
         try {
           var key = 'eizai_recent_visits_' + (EMPLOYEE_INFO.id || 'guest');
@@ -832,7 +878,6 @@
         } catch(e) { console.error('履歴保存エラー', e); }
       }
 
-      // ... existing code for buildNavigation ...
       function buildNavigation() {
         var navLinks = document.getElementById('nav-links');
         navLinks.querySelectorAll('.nav-link').forEach(function(link) {

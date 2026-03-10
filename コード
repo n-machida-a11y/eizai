@@ -91,28 +91,28 @@ function clearMasterCache() {
 // -----------------------------------------------
 
 function doGet(e) {
-  var ui = HtmlService.createTemplateFromFile('index');
-  var userInfo = getUserInfo_();
-  
-  var masterData = getMasterDataCached_();
-
-  ui.employeeInfo = JSON.stringify(userInfo.employeeInfo);
-  ui.isChecker = userInfo.isChecker;
-  ui.isApprover = userInfo.isApprover;
-
-  ui.expenseItems = JSON.stringify(masterData.expenseItems);
-  ui.travelRules = JSON.stringify(masterData.travelRules);
-  ui.lodgingAreas = JSON.stringify(masterData.lodgingAreas);
-  ui.jobCategories = JSON.stringify(masterData.jobCategories);
-  ui.positions = JSON.stringify(masterData.positions);
-  ui.departments = JSON.stringify(masterData.departments);
-  ui.taxTypes = JSON.stringify(masterData.taxTypes);
-  ui.expenseRequirements = JSON.stringify(masterData.expenseRequirements);
-  ui.expensePatterns = JSON.stringify(masterData.expensePatterns);
-  
-  return ui.evaluate()
+  return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('日報兼経費精算システム')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function getInitialData() {
+  var userInfo = getUserInfo_();
+  var masterData = getMasterDataCached_();
+  return {
+    employeeInfo:        userInfo.employeeInfo,
+    isChecker:           userInfo.isChecker,
+    isApprover:          userInfo.isApprover,
+    expenseItems:        masterData.expenseItems,
+    travelRules:         masterData.travelRules,
+    lodgingAreas:        masterData.lodgingAreas,
+    jobCategories:       masterData.jobCategories,
+    positions:           masterData.positions,
+    departments:         masterData.departments,
+    taxTypes:            masterData.taxTypes,
+    expenseRequirements: masterData.expenseRequirements,
+    expensePatterns:     masterData.expensePatterns
+  };
 }
 
 function getUserInfo_() {
@@ -596,9 +596,8 @@ function approveReport(reportId) {
         if (KEIRI_API_URL && KEIRI_API_URL.indexOf('http') === 0) {
           var details = getReportDetails(reportId);
           callKeiriApi_('営業用', reportId, details);
-          result.message += "\n(経理システムへの連携も完了しました)";
         } else {
-          result.message += "\n(経理システム連携: URL未設定のためスキップ)";
+          // 経理システム連携URLが未設定のためスキップ
         }
       } catch (apiError) {
         console.error('経理API連携エラー: ' + apiError.toString());
