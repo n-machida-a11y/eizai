@@ -296,12 +296,22 @@
           <i class="bi bi-info-circle"></i> 申請中の日報一覧です。内容を確認し、承認（精算申請）を行ってください。
         </div>
 
+        <!-- 一括操作バー -->
+        <div id="B-bulk-action-bar" class="d-flex align-items-center mb-2" style="display: none !important;">
+          <span id="B-selected-count" class="me-3 text-muted small">0件選択中</span>
+          <button class="btn btn-sm btn-success" onclick="handleBulkApproveB()">
+            <i class="bi bi-check2-all"></i> 一括承認
+          </button>
+        </div>
+
         <div class="card shadow-sm">
           <div class="table-responsive">
-            <!-- クリック可能であることを示すクラスを追加 -->
             <table class="table table-hover mb-0 approval-accordion-table">
               <thead class="table-light">
                 <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" id="B-select-all" class="form-check-input" onchange="toggleSelectAllB(this)">
+                  </th>
                   <th>日付</th>
                   <th>申請者</th>
                   <th>ステータス</th>
@@ -590,7 +600,7 @@
                 <div class="col-12 col-md-6 d-flex align-items-center mt-4">
                   <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" role="switch" id="M-isCard">
-                    <label class="form-check-label fw-bold" for="M-isCard">会社カード利用</label>
+                    <label class="form-check-label fw-bold" for="M-isCard">会社クレジットカード利用</label>
                   </div>
                 </div>
 
@@ -1632,19 +1642,22 @@
       }
 
       function loadPendingReportsB(bg) {
-        if(!bg) showLoading(true);
+        if (!bg) showLoading(true);
+        // チェック状態をリセット
+        var selectAll = document.getElementById('B-select-all');
+        if (selectAll) selectAll.checked = false;
+        updateBulkSelectionB();
+
         google.script.run.withSuccessHandler(function(d){
           var list = document.getElementById('B-approval-list-body');
-          list.innerHTML = '';
           var arr = d.pending || [];
           var badge = document.getElementById('approval-count-badge');
           if (badge) badge.innerText = arr.length || '';
-          
+
           if (arr.length === 0) {
-            list.innerHTML = '<tr><td colspan="4" class="text-center">なし</td></tr>';
+            list.innerHTML = '<tr><td colspan="5" class="text-center">なし</td></tr>';
           } else {
             arr.sort(function(a,b){ return (a['日付']||'').localeCompare(b['日付']||''); });
-            
             var rowsHtml = '';
             arr.forEach(function(r) {
               var rid = r['日報ID'];
@@ -1652,17 +1665,82 @@
               var person = r['担当者'] || r['氏名'] || r['申請者'] || r['社員名'] || '-';
               var cost = formatNumber(r['合計経費']);
               var safeRid = rid ? rid.replace(/'/g, "\\'") : '';
-              rowsHtml += '<tr style="cursor: pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' +
-                  '<td>' + date + '</td>' +
-                  '<td>' + person + '</td>' +
-                  '<td><span class="badge bg-primary">承認待ち</span></td>' +
-                  '<td>' + cost + '</td>' +
+              rowsHtml += '<tr>' +
+                  '<td onclick="event.stopPropagation()"><input type="checkbox" class="form-check-input B-row-checkbox" value="' + safeRid + '" onchange="updateBulkSelectionB()"></td>' +
+                  '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' + date + '</td>' +
+                  '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' + person + '</td>' +
+                  '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')"><span class="badge bg-primary">承認待ち</span></td>' +
+                  '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' + cost + '</td>' +
               '</tr>';
             });
             list.innerHTML = rowsHtml;
           }
-          if(!bg) showLoading(false);
+          if (!bg) showLoading(false);
+        }).withFailureHandler(function(e) {
+          if (!bg) showLoading(false);
+          onApiError(e);
         }).getPendingReports();
+      }
+
+      function toggleSelectAllB(checkbox) {
+        document.querySelectorAll('.B-row-checkbox').forEach(function(cb) {
+          cb.checked = checkbox.checked;
+        });
+        updateBulkSelectionB();
+      }
+
+      function updateBulkSelectionB() {
+        var checked = document.querySelectorAll('.B-row-checkbox:checked');
+        var all = document.querySelectorAll('.B-row-checkbox');
+        var count = checked.length;
+        var bar = document.getElementById('B-bulk-action-bar');
+        var countLabel = document.getElementById('B-selected-count');
+        var selectAll = document.getElementById('B-select-all');
+
+        if (bar) bar.style.display = count > 0 ? 'flex' : 'none';
+        if (countLabel) countLabel.textContent = count + '件選択中';
+        if (selectAll) {
+          selectAll.indeterminate = count > 0 && count < all.length;
+          selectAll.checked = all.length > 0 && count === all.length;
+        }
+      }
+
+      function handleBulkApproveB() {
+        var checked = Array.from(document.querySelectorAll('.B-row-checkbox:checked'));
+        var rids = checked.map(function(cb) { return cb.value; });
+        if (rids.length === 0) return;
+
+        showCustomAlert(rids.length + '件の日報を一括承認します。よろしいですか？', function() {
+          var errors = 0;
+
+          function approveNext(idx) {
+            if (idx >= rids.length) {
+              showLoading(false);
+              var msg = errors === 0
+                ? rids.length + '件の承認が完了しました。'
+                : '承認完了（' + (rids.length - errors) + '件成功・' + errors + '件エラー）';
+              showCustomAlert(msg, function() {
+                var list = document.getElementById('B-approval-list-body');
+                list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>更新中...</td></tr>';
+                loadPendingReportsB(true);
+              });
+              return;
+            }
+            showLoading(true, '一括承認中 (' + (idx + 1) + '/' + rids.length + ')...');
+            google.script.run
+              .withSuccessHandler(function(res) {
+                if (res.status === 'error') errors++;
+                approveNext(idx + 1);
+              })
+              .withFailureHandler(function() {
+                errors++;
+                approveNext(idx + 1);
+              })
+              .approveReport(rids[idx]);
+          }
+
+          approveNext(0);
+        });
       }
 
       // ... existing loadReportDetailsC ...
@@ -1762,7 +1840,15 @@
         showCustomAlert('承認しますか？', function() {
           showLoading(true);
           google.script.run.withSuccessHandler(function(res) {
-              showLoading(false); showCustomAlert(res.message, function(){ showView(viewC_ReturnView); });
+            showLoading(false);
+            showCustomAlert(res.message, function() {
+              showView(viewC_ReturnView);
+              if (viewC_ReturnView === 'view-B-approval-list') {
+                var list = document.getElementById('B-approval-list-body');
+                list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>更新中...</td></tr>';
+                loadPendingReportsB(true);
+              }
+            });
           }).withFailureHandler(onApiError).approveReport(document.getElementById('C-reportId').value);
         });
       }
@@ -1770,7 +1856,17 @@
         showCustomPrompt('差戻し理由:', function(res) {
           if (!res) return;
           showLoading(true);
-          google.script.run.withSuccessHandler(function(r){ showLoading(false); showCustomAlert(r.message, function(){ showView(viewC_ReturnView); }); }).rejectReport(document.getElementById('C-reportId').value, res);
+          google.script.run.withSuccessHandler(function(r) {
+            showLoading(false);
+            showCustomAlert(r.message, function() {
+              showView(viewC_ReturnView);
+              if (viewC_ReturnView === 'view-B-approval-list') {
+                var list = document.getElementById('B-approval-list-body');
+                list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>更新中...</td></tr>';
+                loadPendingReportsB(true);
+              }
+            });
+          }).rejectReport(document.getElementById('C-reportId').value, res);
         });
       }
 
