@@ -77,6 +77,19 @@ function include(filename) {
 // メイン
 // -----------------------------------------------
 
+/**
+ * マスタキャッシュ強制クリア用関数
+ * スプレッドシートのマスタシートを更新したあと、
+ * GASエディタからこの関数を実行するとすぐにアプリに反映される。
+ */
+function clearMasterCache() {
+  var cache = CacheService.getScriptCache();
+  cache.remove('MASTER_DATA_V2');
+  Logger.log('マスタキャッシュをクリアしました。次のアクセス時に最新データが読み込まれます。');
+}
+
+// -----------------------------------------------
+
 function doGet(e) {
   var ui = HtmlService.createTemplateFromFile('index');
   var userInfo = getUserInfo_();
