@@ -1111,11 +1111,12 @@
         }
         
         document.querySelectorAll('.A-activity-type-select').forEach(function(el) {
-          el.addEventListener('change', function(e) { 
+          el.addEventListener('change', function(e) {
+             e.target.dataset.userSet = 'true'; // ユーザーが明示的に操作した行としてマーク
              var val = e.target.value;
              var time = e.target.dataset.time;
              var otherInput = document.querySelector('.A-activity-type-other[data-time="' + time + '"]');
-             
+
              if (val === 'その他') {
                  otherInput.style.display = 'block';
                  otherInput.focus();
@@ -1201,7 +1202,7 @@
         });
         if (first === -1) return;
         for (var i = first + 1; i < last; i++) {
-          if (!allSelects[i].value) {
+          if (!allSelects[i].value && allSelects[i].dataset.userSet !== 'true') {
             // 直前の入力値を検索
             var prevValue = '';
             for (var j = i - 1; j >= first; j--) {
