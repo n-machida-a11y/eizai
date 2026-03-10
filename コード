@@ -25,7 +25,6 @@ var SHEET_NAMES = {
   POSITIONS: '役職マスタ',
   DEPARTMENTS: '部門マスタ',
   TAX_TYPES: '消費税区分マスタ',
-  EXPENSE_REQUIREMENTS: '経費登録項目別要否',
   EXPENSE_PATTERNS: '経費項目パターン'
 };
 
@@ -50,9 +49,10 @@ function getMasterDataCached_() {
     positions:          getSheetData_(SHEET_NAMES.POSITIONS, ss),
     departments:        getSheetData_(SHEET_NAMES.DEPARTMENTS, ss),
     taxTypes:           getSheetData_(SHEET_NAMES.TAX_TYPES, ss),
-    expenseRequirements: getSheetData_(SHEET_NAMES.EXPENSE_REQUIREMENTS, ss),
     expensePatterns:    getSheetData_(SHEET_NAMES.EXPENSE_PATTERNS, ss)
   };
+  // 経費項目マスタに入力要否・備考例を統合したため、expenseItemsをそのまま流用
+  data.expenseRequirements = data.expenseItems;
 
   try {
     var serialized = JSON.stringify(data);
