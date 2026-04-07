@@ -1,0 +1,2187 @@
+<!DOCTYPE html>
+  <html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <title>日報兼経費精算システム</title>
+
+    <style>
+      /* 読み込み中オーバーレイ */
+      #loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        z-index: 9998;
+        display: none;
+        justify-content: center;
+        align-items: center;
+      }
+      #loading-spinner {
+        z-index: 9999;
+        color: white;
+        text-align: center;
+      }
+
+      .app-view { display: none; }
+      .app-view.active { display: block; }
+
+      /* タイムシート */
+      .timesheet-table th, .timesheet-table td {
+        vertical-align: middle;
+        padding: 0.4rem;
+      }
+      .timesheet-table .time-col {
+        width: 65px;
+        font-size: 0.9rem;
+        text-align: center;
+        background-color: #f8f9fa;
+      }
+      .timesheet-table .type-col { width: 110px; }
+      .timesheet-table .content-col { min-width: 160px; }
+      .timesheet-table .expense-col {
+        width: 60px;
+        text-align: center;
+      }
+
+      .timesheet-table .form-control-sm,
+      .timesheet-table .form-select-sm {
+        border-radius: 0;
+        border: 1px solid #ced4da;
+      }
+      .timesheet-table .form-control-sm[list] {
+        padding-right: 0.5rem;
+      }
+      
+      /* タイムシート入力欄の微調整 */
+      .A-activity-place {
+        background-color: #fcfcfc;
+      }
+      .A-activity-place::placeholder {
+        color: #adb5bd;
+        font-size: 0.85em;
+      }
+
+      /* 経費ボタン */
+      .expense-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 1px solid #0d6efd;
+        color: #0d6efd;
+        background-color: #fff;
+        font-size: 1.2rem;
+        line-height: 1;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .expense-button:hover {
+        background-color: #0d6efd;
+        color: #fff;
+      }
+      .expense-button.has-expense {
+        background-color: #dc3545;
+        border-color: #dc3545;
+        color: #fff;
+      }
+      .expense-button.has-expense:hover {
+        background-color: #b02a37;
+        border-color: #b02a37;
+      }
+      .expense-button .expense-count { display: none; }
+
+      /* アコーディオン内のテーブル */
+      .approval-accordion-table th, 
+      .approval-accordion-table td { vertical-align: middle; }
+      .approval-accordion-table tbody tr { cursor: pointer; }
+      .approval-accordion-table tbody tr:hover { background-color: #f8f9fa; }
+
+      /* 日報一覧 (E) */
+      #E-my-reports-table { font-size: 0.9rem; }
+      #E-my-reports-table th {
+        background-color: #f8f9fa;
+        text-align: center;
+        white-space: nowrap;
+      }
+      #E-my-reports-table td { vertical-align: middle; }
+      .status-group-header {
+        background-color: #e9ecef !important;
+        font-weight: bold;
+        padding: 0.5rem 1rem;
+      }
+      
+      .modal-backdrop { z-index: 10000; }
+      .modal { z-index: 10001; }
+
+      .amount-over-limit {
+        background-color: #fff3cd !important;
+        border-color: #ffc107;
+      }
+      
+      .hidden-number-input { display: none; }
+
+      #customAlertModal,
+      #customPromptModal {
+        z-index: 10010 !important;
+      }
+    </style>
+
+  </head>
+  <body>
+
+    <!-- ナビゲーションバー -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#"><i class="bi bi-calendar-check"></i> 日報システム</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="nav-links">
+            <li class="nav-item">
+              <a class="nav-link" href="#" data-view="view-A-daily-report">
+                <i class="bi bi-pencil-square"></i> 日報入力
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#" data-view="view-E-my-reports">
+                <i class="bi bi-list-task"></i> 日報一覧
+              </a>
+            </li>
+            
+            <li class="nav-item" id="nav-B-approval-list" style="display:none;">
+              <a class="nav-link" href="#" data-view="view-B-approval-list">
+                <i class="bi bi-check2-circle"></i>
+                承認待ち一覧
+                <span class="badge bg-danger" id="approval-count-badge"></span>
+              </a>
+            </li>
+          </ul>
+          <div class="navbar-text text-white">
+            <span id="user-info-display"></span> <i class="bi bi-person-circle"></i>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- メインコンテナ -->
+    <div class="container-fluid p-3 p-md-4">
+
+      <!-- ===== (A) 日報入力ビュー ===== -->
+      <div id="view-A-daily-report" class="app-view">
+        <h3 class="mb-3"><i class="bi bi-pencil-square"></i> 日報入力・編集</h3>
+
+        <div id="A-rejection-reason" class="alert alert-danger" style="display: none;"></div>
+
+        <div class="card shadow-sm mb-4">
+          <div class="card-body">
+            <form id="report-header-form">
+              <input type="hidden" id="A-reportId">
+              
+              <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                  <label for="A-date" class="form-label">日付 <span class="text-danger">*</span></label>
+                  <input type="date" class="form-control" id="A-date" required>
+                </div>
+              </div>
+
+              <div class="row g-3">
+                <div class="col-12">
+                  <label for="A-remarks" class="form-label">備考（全体）</label>
+                  <input type="text" class="form-control" id="A-remarks" placeholder="本日の総括など">
+                </div>
+              </div>
+
+              <hr>
+              <h5 class="mt-3">メーター・走行距離</h5>
+              <div class="row g-3 align-items-end">
+                <div class="col-6 col-md-2">
+                  <label for="A-startMeter" class="form-label">始時メーター(km)</label>
+                  <input type="number" class="form-control" id="A-startMeter">
+                </div>
+                <div class="col-6 col-md-2">
+                  <label for="A-endMeter" class="form-label">終時メーター(km)</label>
+                  <input type="number" class="form-control" id="A-endMeter">
+                </div>
+                <div class="col-6 col-md-2">
+                  <label for="A-privateKm" class="form-label">私有走行(km)</label>
+                  <input type="number" class="form-control" id="A-privateKm" value="0">
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label">本日の走行距離(km)</label>
+                  <h4 id="A-mileageDisplay" class="text-primary mb-0">0 km</h4>
+                </div>
+              </div>
+              
+              <hr>
+              <h5 class="mt-3">活動時間 合計</h5>
+              <div class="row g-3 align-items-end">
+                <div class="col-6 col-md-3">
+                  <label class="form-label">移動時間</label>
+                  <h4 id="A-totalMovementTime" class="text-info mb-0">0.0 時間</h4>
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label">商談時間</label>
+                  <h4 id="A-totalMeetingTime" class="text-info mb-0">0.0 時間</h4>
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label">回収・搬入時間</label>
+                  <h4 id="A-totalCollectionTime" class="text-info mb-0">0.0 時間</h4>
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label">活動合計時間</label>
+                  <h4 id="A-totalActivityTime" class="text-primary fw-bold mb-0">0.0 時間</h4>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- タイムシート -->
+        <div class="card shadow-sm">
+          <div class="card-header">
+            タイムシート (7:00 〜 19:00)
+          </div>
+          <div class="table-responsive">
+            <table class="table table-bordered table-hover timesheet-table mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="time-col">時間</th>
+                  <th class="type-col">活動区分 <span class="text-danger">*</span></th>
+                  <th class="content-col">活動内容 (訪問先 / 業務内容)</th>
+                  <th class="expense-col">経費</th>
+                </tr>
+              </thead>
+              <tbody id="A-timesheet-body">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer text-center">
+            <button type="button" class="btn btn-secondary" id="A-save-button" onclick="saveOrSubmitReportA('一時保存')">
+              <i class="bi bi-save"></i> 一時保存
+            </button>
+            <button type="button" class="btn btn-primary ms-3" id="A-submit-button" onclick="saveOrSubmitReportA('申請中')">
+              <i class="bi bi-send-check"></i> 申請する
+            </button>
+            <button type="button" class="btn btn-outline-danger ms-3" onclick="resetFormA()">
+              <i class="bi bi-arrow-clockwise"></i> 入力リセット
+            </button>
+          </div>
+        </div>
+        
+        <!-- 追加: 訪問先の履歴用データリスト -->
+        <datalist id="recent-visit-places">
+          <!-- JSで動的生成 -->
+        </datalist>
+      </div>
+
+      <!-- ===== (B) 承認待ち一覧ビュー ===== -->
+      <div id="view-B-approval-list" class="app-view">
+        <h3 class="mb-3"><i class="bi bi-check2-circle"></i> 承認待ち一覧</h3>
+        
+        <div class="alert alert-info">
+          <i class="bi bi-info-circle"></i> 申請中の日報一覧です。内容を確認し、承認（精算申請）を行ってください。
+        </div>
+
+        <!-- 一括操作バー -->
+        <div id="B-bulk-action-bar" class="d-flex align-items-center mb-2" style="display: none !important;">
+          <span id="B-selected-count" class="me-3 text-muted small">0件選択中</span>
+          <button class="btn btn-sm btn-success" onclick="handleBulkApproveB()">
+            <i class="bi bi-check2-all"></i> 一括承認
+          </button>
+        </div>
+
+        <div class="card shadow-sm">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 approval-accordion-table">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 40px;">
+                    <input type="checkbox" id="B-select-all" class="form-check-input" onchange="toggleSelectAllB(this)">
+                  </th>
+                  <th>日付</th>
+                  <th>申請者</th>
+                  <th>ステータス</th>
+                  <th>合計経費 (円)</th>
+                </tr>
+              </thead>
+              <tbody id="B-approval-list-body">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== (C) 日報詳細ビュー (承認用) ===== -->
+      <div id="view-C-report-detail" class="app-view">
+        <h3 class="mb-3"><i class="bi bi-file-earmark-text"></i> 日報詳細</h3>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <button class="btn btn-outline-secondary" id="C-back-button">
+            <i class="bi bi-arrow-left"></i> 戻る
+          </button>
+          <div id="C-withdraw-button-container"></div>
+        </div>
+
+        <!-- ヘッダー情報 -->
+        <div class="card shadow-sm mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0" id="C-header-date"></h5>
+            <span id="C-header-status-badge"></span> 
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <strong>申請者:</strong> <span id="C-header-applicant"></span>
+              </div>
+              <div class="col-md-6">
+                <strong>申請日:</strong> <span id="C-header-apply-date"></span>
+              </div>
+              <div class="col-md-6">
+                <strong>走行距離:</strong> <span id="C-header-mileage"></span> km
+              </div>
+              <div class="col-md-6">
+                <strong>合計経費:</strong> <span id="C-header-total-expense" class="text-danger fw-bold"></span> 円
+              </div>
+              <div class="col-md-6">
+                <strong>移動時間合計:</strong> <span id="C-header-movement-time"></span> 時間
+              </div>
+              <div class="col-md-6">
+                <strong>商談時間合計:</strong> <span id="C-header-meeting-time"></span> 時間
+              </div>
+              <div class="col-md-6">
+                <strong>回収・搬入時間合計:</strong> <span id="C-header-collection-time"></span> 時間
+              </div>
+              <div class="col-md-6">
+                <strong>活動合計時間:</strong> <span id="C-header-total-activity-time" class="fw-bold"></span> 時間
+              </div>
+              
+              <div class="col-12 mt-2">
+                <strong>備考:</strong> <pre id="C-header-remarks" class="bg-light p-2 rounded mb-0"></pre>
+              </div>
+              
+              <div class="col-12 mt-2" id="C-rejection-reason-wrapper" style="display: none;">
+                <strong>差戻し理由:</strong>
+                <pre id="C-rejection-reason" class="bg-danger-subtle text-danger-emphasis p-2 rounded mb-0"></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mb-4" id="C-history-card">
+          <div class="card-header">承認履歴</div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6">
+                <strong>承認者:</strong> <span id="C-history-approver">N/A</span>
+              </div>
+              <div class="col-md-6">
+                <strong>承認日時:</strong> <span id="C-history-approve-date">N/A</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+          <div class="card-header">行動明細</div>
+          <div class="table-responsive">
+            <table class="table table-striped mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>時間</th>
+                  <th>活動区分</th>
+                  <th>活動内容</th>
+                </tr>
+              </thead>
+              <tbody id="C-activities-body">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 経費明細 -->
+        <div class="card shadow-sm mb-4">
+          <div class="card-header">経費明細</div>
+          <div class="table-responsive">
+            <table class="table table-striped mb-0" style="min-width: 1000px;">
+              <thead class="table-light">
+                <tr>
+                  <th>時間帯</th>
+                  <th>利用日</th>
+                  <th>経費項目</th>
+                  <th>支払先</th>
+                  <th>金額 (税込)</th>
+                  <th>精算方法</th>
+                  <th>カード利用額</th>
+                  <th>カード</th>
+                  <th>精算金額</th>
+                  <th>エリア</th>
+                  <th>備考</th>
+                  <th>領収書</th>
+                </tr>
+              </thead>
+              <tbody id="C-expenses-body">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 承認/差戻しボタン -->
+        <div id="C-approval-buttons" class="text-center" style="display: none;"></div>
+        <input type="hidden" id="C-reportId">
+
+      </div>
+
+      <!-- ===== (E) 日報一覧ビュー ===== -->
+      <div id="view-E-my-reports" class="app-view">
+        <h3 class="mb-3"><i class="bi bi-list-task"></i> 自分の申請履歴</h3>
+        
+        <div class="card mb-3 bg-light">
+          <div class="card-body p-3">
+            <h6 class="card-title mb-2"><i class="bi bi-search"></i> 検索フィルタ</h6>
+            <div class="row g-2 align-items-end">
+              <div class="col-md-3">
+                <label class="form-label small">日付範囲</label>
+                <div class="input-group input-group-sm">
+                  <input type="date" class="form-control" id="S-date-from">
+                  <span class="input-group-text">〜</span>
+                  <input type="date" class="form-control" id="S-date-to">
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small">金額 (税込)</label>
+                <div class="input-group input-group-sm">
+                  <input type="number" class="form-control" id="S-amount-min" placeholder="最小">
+                  <span class="input-group-text">〜</span>
+                  <input type="number" class="form-control" id="S-amount-max" placeholder="最大">
+                </div>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small">支払先・備考 (あいまい)</label>
+                <input type="text" class="form-control form-control-sm" id="S-keyword" placeholder="キーワード">
+              </div>
+              <div class="col-md-3 text-end">
+                <button class="btn btn-sm btn-secondary me-1" onclick="resetSearchE()">クリア</button>
+                <button class="btn btn-sm btn-primary" onclick="filterReportsE()">検索</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="d-flex justify-content-end mb-2">
+          <button class="btn btn-sm btn-outline-primary" onclick="loadMyReportsE()">
+            <i class="bi bi-arrow-clockwise"></i> 更新
+          </button>
+        </div>
+        
+        <div class="card shadow-sm">
+          <div class="table-responsive">
+            <table class="table table-bordered table-hover mb-0 align-middle" id="E-my-reports-table">
+              <thead class="table-light">
+                <tr>
+                  <th style="min-width: 90px;">申請日</th>
+                  <th style="min-width: 90px;">ステータス</th>
+                  <th style="min-width: 120px;">件名</th>
+                  <th style="min-width: 100px;">合計経費<br>(円)</th>
+                  <th style="min-width: 100px;">精算金額<br>合計(円)</th>
+
+                  <th style="min-width: 90px;">利用日</th>
+                  <th style="min-width: 100px;">経費項目</th>
+                  <th style="min-width: 100px;">経費詳細<br>(円)</th>
+                  <th style="min-width: 120px;">備考</th>
+                  <th style="min-width: 60px;">領収書</th>
+                  
+                  <th style="min-width: 100px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="E-my-reports-list-body">
+                <!-- JSで動的生成 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        <div id="E-no-reports-msg" class="text-center mt-3" style="display: none;">
+          <p class="text-muted">日報データはありません。</p>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- 読み込み中オーバーレイ -->
+    <div id="loading-overlay">
+      <div id="loading-spinner">
+        <div class="spinner-border" role="status" style="width: 3rem; height: 3rem;">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <h4 class="mt-3" id="loading-text">読み込み中...</h4>
+      </div>
+    </div>
+
+
+    <!-- (A) 経費登録モーダル -->
+    <div class="modal fade" id="expenseModal" tabindex="-1" aria-labelledby="expenseModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="expenseModalLabel">経費登録</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            
+            <form id="expense-form">
+              <input type="hidden" id="M-expenseId">
+              <input type="hidden" id="M-timeSlot">
+              
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label for="M-useDate" class="form-label">利用日 <span class="text-danger">*</span></label>
+                  <input type="date" class="form-control" id="M-useDate" required>
+                </div>
+                <div class="col-12 col-md-6">
+                  <label for="M-itemCode" class="form-label">経費項目 <span class="text-danger">*</span></label>
+                  <select class="form-select" id="M-itemCode" required>
+                    <option value="">選択してください</option>
+                    <!-- JSで動的生成 -->
+                  </select>
+                </div>
+
+                <div class="col-12" id="M-transport-alert" style="display: none;">
+                  <div class="alert alert-warning mb-0 border-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i> 
+                    <strong>交通費精算の注意点</strong><br>
+                    備考欄に<strong>利用区間（出発地-到着地）</strong>を入力してください。<br>
+                    <small>※ICカードチャージの領収書での精算はできません。</small>
+                  </div>
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label for="M-method" class="form-label">精算方法 <span class="text-danger">*</span></label>
+                  <select class="form-select" id="M-method">
+                    <option value="仮払金" selected>仮払金</option>
+                    <option value="現金">現金</option>
+                  </select>
+                </div>
+
+                <div class="col-12 col-md-6" id="M-area-wrapper" style="display: none;">
+                  <label for="M-areaCode" class="form-label">エリア <span class="text-danger">*</span></label>
+                  <select class="form-select" id="M-areaCode">
+                    <option value="">エリアを選択</option>
+                  </select>
+                </div>
+                
+                <div class="col-12">
+                  <label for="M-payee" class="form-label">支払先</label>
+                  <input type="text" class="form-control" id="M-payee" placeholder="店名・取引先など">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label for="M-amount" class="form-label">金額 (税込) <span class="text-danger">*</span></label>
+                  <input type="tel" class="form-control" id="M-amount-display-input" placeholder="税込金額" inputmode="numeric">
+                  <input type="number" class="hidden-number-input" id="M-amount" required>
+                </div>
+
+                <div class="col-12 col-md-6 d-flex align-items-center mt-4">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="M-isCard">
+                    <label class="form-check-label fw-bold" for="M-isCard">会社クレジットカード利用</label>
+                  </div>
+                </div>
+
+                <div class="col-12 bg-light p-3 rounded" id="M-card-wrapper" style="display: none;">
+                  <label for="M-cardAmount" class="form-label text-primary">カード利用額 (円)</label>
+                  <input type="tel" class="form-control" id="M-cardAmount-display-input" placeholder="カードでの支払額" inputmode="numeric">
+                  <input type="number" class="hidden-number-input" id="M-cardAmount">
+                </div>
+                
+                <!-- 修正: 消費税区分マスタベースの選択肢に変更 -->
+                <div class="col-12" id="M-tax-wrapper">
+                  <label for="M-tax-type-select" class="form-label">消費税区分 <span class="text-danger">*</span> <small class="text-danger fw-normal">※領収書等に登録番号の記載がない場合は(免税)の消費税区分を選択すること。</small></label>
+                  <div class="input-group">
+                    <select class="form-select" id="M-tax-type-select">
+                      <!-- JSで動的生成 -->
+                    </select>
+                  </div>
+                  <input type="hidden" id="M-tax-rate-val"> <!-- 選択された税率を保持 -->
+                  <div class="form-text">税抜金額: <span id="M-tax-excluded-display">-</span> 円</div>
+                  <input type="number" class="hidden-number-input" id="M-amount-excluding-tax">
+                </div>
+
+                <div class="col-12 bg-light p-3 rounded mt-2">
+                  <div class="row g-3 align-items-center">
+                    <div class="col-md-12">
+                      <label class="form-label fw-bold">精算金額 (自動計算)</label>
+                      <div class="fs-4 text-primary" id="M-reimburse-display">0 円</div>
+                      <input type="hidden" id="M-reimburseAmount">
+                      <small class="text-muted">※金額(税込) - カード利用額</small>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <label for="M-remarks" class="form-label">備考（内容詳細など）<span id="remarks-required-mark" class="text-danger" style="display:none;"> *</span></label>
+                  <textarea class="form-control" id="M-remarks" rows="2" placeholder="例: 会議のため" style="resize: vertical;"></textarea>
+                </div>
+                
+                <hr class="my-2">
+                
+                <div class="col-12">
+                  <label for="M-receiptImage" class="form-label">領収書アップロード (画像/PDF)</label>
+                  <div id="receipt-amount-note" class="form-text text-warning" style="display:none;">
+                    <i class="bi bi-exclamation-triangle-fill"></i> 3万円以上の場合は領収書が必要です
+                  </div>
+                  <!-- 修正: acceptにPDFを追加 -->
+                  <input class="form-control" type="file" id="M-receiptImage" accept="image/*,application/pdf">
+                </div>
+                
+                <input type="hidden" id="M-receiptUrl">
+                
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-danger me-auto" id="M-delete-expense" onclick="deleteExpenseItemA()" style="display: none;">
+              <i class="bi bi-trash"></i> 削除
+            </button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+            <button type="button" class="btn btn-primary" id="M-submit-expense" onclick="addExpenseItemA()">
+              <i class="bi bi-check-lg"></i> この内容で登録
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Alerts -->
+    <div class="modal fade" id="customAlertModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="customAlertModalLabel">情報</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body"><p id="customAlertMessage"></p></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="customAlertOkButton">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="customPromptModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="customPromptModalLabel">差戻し理由</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label for="customPromptInput" class="form-label" id="customPromptMessage">差戻し理由を入力してください（必須）:</label>
+            <textarea class="form-control" id="customPromptInput" rows="3"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+            <button type="button" class="btn btn-primary" id="customPromptOkButton">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      // -------------------------------------------------------------
+      // グローバル変数定義 (サーバーサイド変数の安全な受け取り)
+      // -------------------------------------------------------------
+      
+      // マスタデータ (getInitialData() で非同期取得・localStorageにキャッシュ)
+      var EMPLOYEE_INFO = {};
+      var IS_CHECKER = false;
+      var IS_APPROVER = false;
+      var EXPENSE_ITEMS_MASTER = [];
+      var TRAVEL_RULES_MASTER = [];
+      var LODGING_AREAS_MASTER = [];
+      var JOB_CATEGORIES_MASTER = [];
+      var POSITIONS_MASTER = [];
+      var DEPARTMENTS_MASTER = [];
+      var TAX_TYPES_MASTER = [];
+      var EXPENSE_REQUIREMENTS_MASTER = [];
+      var EXPENSE_PATTERNS_MASTER = [];
+
+      // localStorageキャッシュ設定
+      var LS_CACHE_KEY = 'eizai_init_v2'; // v2: 経費項目マスタに要否列追加対応
+      var LS_CACHE_TTL = 3600000; // 1時間
+
+      function loadFromLocalCache() {
+        try {
+          var item = localStorage.getItem(LS_CACHE_KEY);
+          if (!item) return null;
+          var parsed = JSON.parse(item);
+          if (!parsed.ts || (Date.now() - parsed.ts) > LS_CACHE_TTL) return null;
+          return parsed.data;
+        } catch(e) { return null; }
+      }
+
+      function saveToLocalCache(data) {
+        try {
+          localStorage.setItem(LS_CACHE_KEY, JSON.stringify({ data: data, ts: Date.now() }));
+        } catch(e) {}
+      }
+
+      function applyInitialData(data, pendingAlreadyLoaded) {
+        EMPLOYEE_INFO              = data.employeeInfo        || {};
+        IS_CHECKER                 = data.isChecker           || false;
+        IS_APPROVER                = data.isApprover          || false;
+        EXPENSE_ITEMS_MASTER       = data.expenseItems        || [];
+        TRAVEL_RULES_MASTER        = data.travelRules         || [];
+        LODGING_AREAS_MASTER       = data.lodgingAreas        || [];
+        JOB_CATEGORIES_MASTER      = data.jobCategories       || [];
+        POSITIONS_MASTER           = data.positions           || [];
+        DEPARTMENTS_MASTER         = data.departments         || [];
+        TAX_TYPES_MASTER           = data.taxTypes            || [];
+        EXPENSE_REQUIREMENTS_MASTER = data.expenseRequirements || [];
+        EXPENSE_PATTERNS_MASTER    = data.expensePatterns      || [];
+
+        // ユーザー名表示
+        document.getElementById('user-info-display').textContent = EMPLOYEE_INFO.name || 'ゲスト';
+
+        // 承認担当者のみ承認待ち一覧ナビを表示
+        if (IS_CHECKER || IS_APPROVER) {
+          document.getElementById('nav-B-approval-list').style.display = '';
+        }
+
+        // マスタデータ依存の初期化
+        loadExpenseItemsMasterA();
+        buildExpenseMapsA();
+        loadLodgingAreasMasterA();
+        loadTaxTypesMasterA();
+        renderTimesheetA();
+        loadRecentVisitPlaces();
+
+        // 初期画面表示
+        var lastView = sessionStorage.getItem('lastView') || 'view-E-my-reports';
+        showView(lastView);
+
+        if (!pendingAlreadyLoaded && (IS_CHECKER || IS_APPROVER)) loadPendingReportsB();
+      }
+
+      var currentActivities = {};
+      var currentExpenses = [];
+      var isUploading = false;
+      var expenseRequirementsMap = {};
+      var expensePatternMap = {};
+      var TIME_SLOTS = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00"];
+      var ACTIVITY_TYPES = ["", "出勤", "退社", "移動", "商談", "休憩", "在社", "宿泊", "回収・搬入", "その他"];
+
+      var expenseModalInstance;
+      var viewC_ReturnView = 'view-E-my-reports'; 
+      var customAlertModalInstance;
+      var customPromptModalInstance;
+      var customAlertCallback = null;
+      var customPromptCallback = null;
+      var currentExpenseLimit = null;
+      var allMyReportsCache = [];
+
+      document.addEventListener('DOMContentLoaded', function() {
+        // データ非依存のUI初期化（即時実行）
+        buildNavigation();
+        expenseModalInstance = new bootstrap.Modal(document.getElementById('expenseModal'));
+        document.getElementById('expenseModal').addEventListener('shown.bs.modal', onExpenseModalShowA);
+        document.getElementById('expenseModal').addEventListener('hidden.bs.modal', onExpenseModalHideA);
+        initializeCustomModalsA();
+        setupMileageCalculatorA();
+
+        document.getElementById('M-receiptImage').addEventListener('change', handleImageUploadA);
+        document.getElementById('M-itemCode').addEventListener('change', onItemCodeChangeA);
+        document.getElementById('M-areaCode').addEventListener('change', onAreaCodeChangeA);
+        document.getElementById('M-amount').addEventListener('input', function(e) {
+          handleTaxCalculationA(e); calculateReimburseA();
+        });
+        document.getElementById('M-cardAmount').addEventListener('input', calculateReimburseA);
+        document.getElementById('M-tax-type-select').addEventListener('change', handleTaxCalculationA);
+        document.getElementById('M-isCard').addEventListener('change', function(e) {
+          var wrapper = document.getElementById('M-card-wrapper');
+          wrapper.style.display = e.target.checked ? 'block' : 'none';
+          if (!e.target.checked) updateKanmaInputA('M-cardAmount', '');
+          calculateReimburseA();
+        });
+        initializeKanmaInputsA();
+        document.getElementById('C-back-button').addEventListener('click', function() { showView(viewC_ReturnView); });
+
+        // localStorageキャッシュ確認
+        var cached = loadFromLocalCache();
+        if (cached) {
+          // キャッシュあり → 即時表示（バックグラウンドrefreshは行わない：GAS競合を防ぐため）
+          applyInitialData(cached, false);
+        } else {
+          // 初回 or キャッシュ切れ → 1回のGASコールでマスタ+承認待ちを同時取得
+          showLoading(true, 'データを読み込み中...');
+          google.script.run
+            .withSuccessHandler(function(response) {
+              saveToLocalCache(response.initialData);
+              if (response.pendingReports) {
+                renderPendingListB(response.pendingReports.pending || []);
+              }
+              applyInitialData(response.initialData, response.pendingReports != null);
+              showLoading(false);
+            })
+            .withFailureHandler(function(e) {
+              showLoading(false);
+              onApiError(e);
+            })
+            .getInitialDataWithPending();
+        }
+      });
+
+      function loadRecentVisitPlaces() {
+        try {
+          var key = 'eizai_recent_visits_' + (EMPLOYEE_INFO.id || 'guest');
+          var history = JSON.parse(localStorage.getItem(key) || '[]');
+          var datalist = document.getElementById('recent-visit-places');
+          datalist.innerHTML = '';
+          history.forEach(function(place) {
+            var option = document.createElement('option');
+            option.value = place;
+            datalist.appendChild(option);
+          });
+        } catch(e) { console.error('履歴読み込みエラー', e); }
+      }
+
+      function saveRecentVisitPlaces(activities) {
+        try {
+          var key = 'eizai_recent_visits_' + (EMPLOYEE_INFO.id || 'guest');
+          var history = JSON.parse(localStorage.getItem(key) || '[]');
+          var newPlaces = [];
+          Object.values(currentActivities).forEach(function(act) {
+            if (act.place && act.place.trim()) { newPlaces.push(act.place.trim()); }
+          });
+          newPlaces.forEach(function(p) {
+            history = history.filter(function(h) { return h !== p; });
+            history.unshift(p);
+          });
+          if (history.length > 5) history = history.slice(0, 5);
+          localStorage.setItem(key, JSON.stringify(history));
+          loadRecentVisitPlaces();
+        } catch(e) { console.error('履歴保存エラー', e); }
+      }
+
+      function buildNavigation() {
+        var navLinks = document.getElementById('nav-links');
+        navLinks.querySelectorAll('.nav-link').forEach(function(link) {
+          link.addEventListener('click', function(e) {
+            e.preventDefault();
+            showView(e.currentTarget.dataset.view);
+            var navbar = document.getElementById('navbarNav');
+            var bsCollapse = bootstrap.Collapse.getInstance(navbar);
+            if (bsCollapse && navbar.classList.contains('show')) bsCollapse.hide();
+          });
+        });
+      }
+
+      function buildExpenseMapsA() {
+        expenseRequirementsMap = {};
+        expensePatternMap = {};
+        EXPENSE_REQUIREMENTS_MASTER.forEach(function(req) {
+          expenseRequirementsMap[String(req['経費項目コード'])] = req;
+        });
+        EXPENSE_PATTERNS_MASTER.forEach(function(pat) {
+          var key = String(pat['経費項目コード']) + '_' + String(pat['職種区分']);
+          expensePatternMap[key] = pat;
+        });
+      }
+
+      function loadExpenseItemsMasterA() {
+        var select = document.getElementById('M-itemCode');
+        select.innerHTML = '<option value="">選択してください</option>';
+        EXPENSE_ITEMS_MASTER.forEach(function(item) {
+          var option = document.createElement('option');
+          option.value = item['経費項目コード'];
+          option.textContent = item['経費項目'];
+          select.appendChild(option);
+        });
+      }
+      
+      function loadLodgingAreasMasterA() {
+        var select = document.getElementById('M-areaCode');
+        select.innerHTML = '<option value="">エリアを選択</option>';
+        LODGING_AREAS_MASTER.forEach(function(area) {
+          var option = document.createElement('option');
+          option.value = area['地域区分'];
+          option.textContent = area['地域区分名'];
+          select.appendChild(option);
+        });
+      }
+
+      // 追加: 消費税区分マスタの読み込み (補正ロジック強化)
+      function loadTaxTypesMasterA() {
+        var select = document.getElementById('M-tax-type-select');
+        select.innerHTML = '';
+        
+        var defaultCode = '';
+        
+        TAX_TYPES_MASTER.forEach(function(tax) {
+          var option = document.createElement('option');
+          option.value = tax['消費税区分コード'];
+          option.textContent = tax['消費税区分']; 
+          
+          // 修正: レートが整数(例: 10)で渡ってきた場合の対応
+          var r = parseFloat(tax['消費税率']);
+          // 1以上の場合はパーセント値とみなして100で割る (例: 10 -> 0.1)
+          if (r >= 1) r = r / 100;
+          
+          option.dataset.rate = r; 
+          option.dataset.class = tax['消費税分類区分']; 
+          option.dataset.calc = tax['消費税計算区分'];   
+          select.appendChild(option);
+          
+          // デフォルト値判定 (0.1付近)
+          if (!defaultCode && Math.abs(r - 0.1) < 0.0001) defaultCode = tax['消費税区分コード'];
+        });
+        
+        if (defaultCode) select.value = defaultCode;
+      }
+
+      function initializeCustomModalsA() {
+        customAlertModalInstance = new bootstrap.Modal(document.getElementById('customAlertModal'));
+        ['customAlertModal', 'customPromptModal'].forEach(function(id) {
+          document.getElementById(id).addEventListener('show.bs.modal', function() {
+            var self = this;
+            setTimeout(function() {
+              var allBackdrops = document.querySelectorAll('.modal-backdrop');
+              if (allBackdrops.length > 0) {
+                allBackdrops[allBackdrops.length - 1].style.zIndex = '10009';
+              }
+              self.style.zIndex = '10010';
+            }, 10);
+          });
+        });
+        document.getElementById('customAlertOkButton').addEventListener('click', function() {
+          if (typeof customAlertCallback === 'function') { customAlertCallback(); customAlertCallback = null; }
+        });
+        document.getElementById('customAlertModal').addEventListener('hidden.bs.modal', function() {
+          if (typeof customAlertCallback === 'function') customAlertCallback = null; 
+        });
+
+        customPromptModalInstance = new bootstrap.Modal(document.getElementById('customPromptModal'));
+        document.getElementById('customPromptOkButton').addEventListener('click', function() {
+          var value = document.getElementById('customPromptInput').value;
+          if (typeof customPromptCallback === 'function') { customPromptCallback(value); customPromptCallback = null; }
+          customPromptModalInstance.hide();
+        });
+        document.getElementById('customPromptModal').addEventListener('hidden.bs.modal', function() {
+          if (typeof customPromptCallback === 'function') { customPromptCallback(null); customPromptCallback = null; }
+        });
+      }
+      
+      function showCustomAlert(message, callback) {
+        document.getElementById('customAlertMessage').innerText = message; 
+        customAlertCallback = callback || null;
+        customAlertModalInstance.show();
+      }
+      
+      function showCustomPrompt(message, callback) {
+        document.getElementById('customPromptMessage').innerText = message;
+        document.getElementById('customPromptInput').value = ''; 
+        customPromptCallback = callback;
+        customPromptModalInstance.show();
+      }
+
+      function showView(viewId) {
+        // 主要画面のみ sessionStorage に保存（詳細画面Cは除外）
+        if (['view-A-daily-report', 'view-B-approval-list', 'view-E-my-reports'].indexOf(viewId) !== -1) {
+          sessionStorage.setItem('lastView', viewId);
+        }
+        document.querySelectorAll('.app-view').forEach(function(view) { view.classList.remove('active'); });
+        document.querySelectorAll('#nav-links .nav-link').forEach(function(link) {
+          if (link.dataset.view === viewId) link.classList.add('active'); else link.classList.remove('active');
+        });
+        
+        var targetView = document.getElementById(viewId);
+        if (targetView) {
+          targetView.classList.add('active');
+          switch (viewId) {
+            case 'view-A-daily-report':
+              if (!document.getElementById('A-date').value) document.getElementById('A-date').value = getTodayString();
+              break;
+            case 'view-B-approval-list': 
+              // 修正: 既にデータがあればロードしない (高速化)
+              if (!document.getElementById('B-approval-list-body').hasChildNodes()) loadPendingReportsB();
+              break;
+            case 'view-E-my-reports': 
+              // 修正: キャッシュがあればロードしない (高速化)
+              if (allMyReportsCache.length === 0) loadMyReportsE(); 
+              else filterReportsE(); // キャッシュから再描画
+              break;
+          }
+        }
+      }
+
+      function showLoading(show, text) {
+        var overlay = document.getElementById('loading-overlay');
+        document.getElementById('loading-text').textContent = text || '読み込み中...';
+        overlay.style.display = show ? 'flex' : 'none';
+      }
+
+      function onApiError(error) {
+        showLoading(false);
+        var message = (typeof error === 'string') ? error : (error && error.message ? error.message : '不明なエラー');
+        showCustomAlert('エラーが発生しました:\n' + message); 
+      }
+
+      function getTodayString() {
+        var today = new Date();
+        today.setHours(today.getHours() + 9); 
+        return today.toISOString().split('T')[0];
+      }
+      
+      function formatNumber(num) { return (num || 0).toLocaleString(); }
+      function formatHours(hours) { return (Math.round((hours || 0) * 10) / 10).toFixed(1); }
+      function formatDateWithDay(dateStr) {
+        try {
+          var date = new Date(dateStr.replace(/-/g, '/'));
+          var day = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+          return date.getFullYear() + '/' + ('0'+(date.getMonth()+1)).slice(-2) + '/' + ('0'+date.getDate()).slice(-2) + ' (' + day + ')';
+        } catch (e) { return dateStr; }
+      }
+      function formatDateTime(dateStr) {
+        try {
+          var date = (dateStr instanceof Date) ? dateStr : new Date(dateStr.replace(/-/g, '/'));
+          return date.getFullYear() + '/' + ('0'+(date.getMonth()+1)).slice(-2) + '/' + ('0'+date.getDate()).slice(-2) + ' ' + ('0'+date.getHours()).slice(-2) + ':' + ('0'+date.getMinutes()).slice(-2);
+        } catch (e) { return dateStr; }
+      }
+
+      function renderTimesheetA() {
+        var tbody = document.getElementById('A-timesheet-body');
+        tbody.innerHTML = ''; 
+        var optionsHtml = ACTIVITY_TYPES.map(function(opt) {
+            return '<option value="' + opt + '">' + (opt || '---') + '</option>';
+        }).join('');
+
+        for (var i = 0; i < TIME_SLOTS.length - 1; i++) { 
+          var startTime = TIME_SLOTS[i];
+          var activity = currentActivities[startTime] || { type: '', content: '' };
+          
+          var placeVal = activity.place || '';
+          var detailVal = activity.detail || '';
+          if (!placeVal && !detailVal && activity.content) {
+             var match = activity.content.match(/^【(.*?)】\s*(.*)$/);
+             if (match) { placeVal = match[1]; detailVal = match[2]; } 
+             else { detailVal = activity.content; }
+          }
+
+          var typeVal = activity.type || '';
+          var isOther = typeVal && !ACTIVITY_TYPES.includes(typeVal);
+          var selectVal = isOther ? 'その他' : typeVal;
+          var otherInputStyle = isOther ? 'block' : 'none';
+          var otherInputVal = isOther ? typeVal : '';
+
+          var hasExpense = currentExpenses.some(function(ex) { return ex.timeSlot === startTime; });
+          var badgeClass = hasExpense ? 'expense-button has-expense' : 'expense-button';
+
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<th class="time-col table-light">' + startTime + '</th>' +
+            '<td class="type-col">' +
+              '<select class="form-select form-select-sm A-activity-type-select" data-time="' + startTime + '">' + optionsHtml + '</select>' +
+              '<input type="text" class="form-control form-control-sm mt-1 A-activity-type-other" data-time="' + startTime + '" placeholder="詳細" value="' + otherInputVal + '" style="display:' + otherInputStyle + ';">' +
+            '</td>' +
+            '<td class="content-col">' +
+              '<div class="d-flex flex-column flex-md-row gap-1">' +
+                '<input type="text" class="form-control form-control-sm A-activity-place" list="recent-visit-places" autocomplete="off" data-time="' + startTime + '" placeholder="訪問先" value="' + placeVal + '">' +
+                '<input type="text" class="form-control form-control-sm A-activity-content" data-time="' + startTime + '" placeholder="業務内容" value="' + detailVal + '">' +
+              '</div>' +
+            '</td>' +
+            '<td class="expense-col"><span class="' + badgeClass + '" id="expense-badge-' + startTime + '" onclick="openExpenseModalA(\'' + startTime + '\')"><i class="bi bi-plus"></i></span></td>';
+          tbody.appendChild(tr);
+          
+          var selectEl = tr.querySelector('.A-activity-type-select');
+          if (selectEl) selectEl.value = selectVal;
+        }
+        
+        document.querySelectorAll('.A-activity-type-select').forEach(function(el) {
+          el.addEventListener('change', function(e) {
+             e.target.dataset.userSet = 'true'; // ユーザーが明示的に操作した行としてマーク
+             var val = e.target.value;
+             var time = e.target.dataset.time;
+             var otherInput = document.querySelector('.A-activity-type-other[data-time="' + time + '"]');
+
+             if (val === 'その他') {
+                 otherInput.style.display = 'block';
+                 otherInput.focus();
+                 updateActivityA(time, 'type', otherInput.value);
+             } else {
+                 otherInput.style.display = 'none';
+                 updateActivityA(time, 'type', val);
+             }
+          });
+          el.addEventListener('focusout', autoFillMovementA);
+        });
+        document.querySelectorAll('.A-activity-type-other').forEach(function(el) {
+          el.addEventListener('input', function(e) { updateActivityA(e.target.dataset.time, 'type', e.target.value); });
+        });
+        document.querySelectorAll('.A-activity-place').forEach(function(el) {
+          el.addEventListener('input', function(e) { updateActivityA(e.target.dataset.time, 'place', e.target.value); });
+        });
+        document.querySelectorAll('.A-activity-content').forEach(function(el) {
+          el.addEventListener('input', function(e) { updateActivityA(e.target.dataset.time, 'detail', e.target.value); });
+        });
+
+        calculateTotalsA();
+      }
+
+      function resetFormA() {
+        document.getElementById('report-header-form').reset();
+        document.getElementById('A-reportId').value = '';
+        document.getElementById('A-date').value = getTodayString();
+        document.getElementById('A-mileageDisplay').textContent = '0 km';
+        document.getElementById('A-totalMovementTime').textContent = '0.0 時間';
+        document.getElementById('A-totalMeetingTime').textContent = '0.0 時間';
+        document.getElementById('A-totalCollectionTime').textContent = '0.0 時間';
+        document.getElementById('A-totalActivityTime').textContent = '0.0 時間';
+        document.getElementById('A-rejection-reason').style.display = 'none';
+        currentActivities = {};
+        currentExpenses = [];
+        renderTimesheetA();
+        document.querySelectorAll('.expense-button').forEach(function(badge) { badge.classList.remove('has-expense'); });
+      }
+
+      function setupMileageCalculatorA() {
+        ['A-startMeter', 'A-endMeter', 'A-privateKm'].forEach(function(id) {
+          document.getElementById(id).addEventListener('input', function() {
+            var start = parseFloat(document.getElementById('A-startMeter').value) || 0;
+            var end = parseFloat(document.getElementById('A-endMeter').value) || 0;
+            var privateKm = parseFloat(document.getElementById('A-privateKm').value) || 0;
+            document.getElementById('A-mileageDisplay').textContent = Math.max(0, (end > start ? (end - start) - privateKm : 0)) + ' km';
+          });
+        });
+      }
+
+      function updateActivityA(timeSlot, key, value) {
+        if (!currentActivities[timeSlot]) currentActivities[timeSlot] = { type: '', place: '', detail: '' };
+        currentActivities[timeSlot][key] = value;
+        calculateTotalsA();
+      }
+      
+      function syncActivitiesFromDOM() {
+        document.querySelectorAll('.A-activity-type-select').forEach(function(el) {
+          var time = el.dataset.time;
+          var selectVal = el.value;
+          var otherInput = document.querySelector('.A-activity-type-other[data-time="' + time + '"]');
+          var finalType = (selectVal === 'その他') ? (otherInput ? otherInput.value.trim() : '') : selectVal;
+          
+          var placeEl = document.querySelector('.A-activity-place[data-time="' + time + '"]');
+          var contentEl = document.querySelector('.A-activity-content[data-time="' + time + '"]');
+          var placeVal = placeEl ? placeEl.value.trim() : '';
+          var contentVal = contentEl ? contentEl.value.trim() : '';
+          
+          if (!currentActivities[time]) currentActivities[time] = {};
+          currentActivities[time].type = finalType;
+          currentActivities[time].place = placeVal;
+          currentActivities[time].detail = contentVal;
+          currentActivities[time].content = (placeVal ? '【' + placeVal + '】 ' : '') + contentVal;
+        });
+      }
+
+      function autoFillMovementA() {
+        var allSelects = document.querySelectorAll('.A-activity-type-select');
+        var first = -1, last = -1;
+        allSelects.forEach(function(sel, idx) {
+            if (sel.value) { if (first===-1) first=idx; last=idx; }
+        });
+        if (first === -1) return;
+        for (var i = first + 1; i < last; i++) {
+          if (!allSelects[i].value && allSelects[i].dataset.userSet !== 'true') {
+            // 直前の入力値を検索
+            var prevValue = '';
+            for (var j = i - 1; j >= first; j--) {
+              if (allSelects[j].value) { prevValue = allSelects[j].value; break; }
+            }
+            allSelects[i].value = prevValue;
+            updateActivityA(allSelects[i].dataset.time, 'type', prevValue);
+            var otherInput = document.querySelector('.A-activity-type-other[data-time="' + allSelects[i].dataset.time + '"]');
+            if(otherInput) otherInput.style.display = 'none';
+          }
+        }
+      }
+      
+      function calculateTotalsA() {
+        var move=0, meet=0, collect=0;
+        Object.values(currentActivities).forEach(function(act) {
+          var t = (act.type || '').trim();
+          if (t.indexOf('移動') > -1) move += 0.5;
+          else if (t.indexOf('商談') > -1) meet += 0.5;
+          else if (t.indexOf('回収・搬入') > -1) collect += 0.5;
+        });
+        var total = move + meet + collect;
+        
+        document.getElementById('A-totalMovementTime').textContent = move.toFixed(1) + ' 時間';
+        document.getElementById('A-totalMeetingTime').textContent = meet.toFixed(1) + ' 時間';
+        document.getElementById('A-totalCollectionTime').textContent = collect.toFixed(1) + ' 時間';
+        document.getElementById('A-totalActivityTime').textContent = total.toFixed(1) + ' 時間';
+      }
+
+      // ... existing openExpenseModalA ...
+      function openExpenseModalA(timeSlot) {
+        resetExpenseModalForm(); 
+        document.getElementById('M-timeSlot').value = timeSlot;
+        var existingExpense = currentExpenses.find(function(ex) { return ex.timeSlot === timeSlot; });
+        if (existingExpense) loadExpenseForEdit(existingExpense);
+        else document.getElementById('M-useDate').value = document.getElementById('A-date').value || getTodayString();
+        expenseModalInstance.show();
+      }
+
+      function loadExpenseForEdit(expenseToEdit) {
+          document.getElementById('M-expenseId').value = expenseToEdit.expenseId;
+          document.getElementById('M-useDate').value = expenseToEdit.useDate.replace(/\//g, '-');
+          document.getElementById('M-itemCode').value = expenseToEdit.itemCode;
+          document.getElementById('M-remarks').value = expenseToEdit.remarks;
+          document.getElementById('M-payee').value = expenseToEdit.payee || '';
+          document.getElementById('M-receiptUrl').value = expenseToEdit.receiptUrl || '';
+          document.getElementById('M-receiptImage').value = '';
+          
+          document.getElementById('M-areaCode').value = expenseToEdit.areaCode || '';
+          document.getElementById('M-method').value = expenseToEdit.method || '仮払金';
+          
+          var isCard = expenseToEdit.isCard || false;
+          document.getElementById('M-isCard').checked = isCard;
+          document.getElementById('M-card-wrapper').style.display = isCard ? 'block' : 'none';
+
+          // 修正: 消費税区分の読み込み
+          var select = document.getElementById('M-tax-type-select');
+          if (expenseToEdit.taxType) {
+              select.value = expenseToEdit.taxType;
+          } else {
+              // 互換性: taxRateから推測、またはデフォルト
+              // 既にloadTaxTypesMasterAでデフォルトが選ばれているのでそのまま
+          }
+          
+          document.getElementById('M-delete-expense').style.display = 'inline-block'; 
+          
+          onItemCodeChangeA(); 
+          updateKanmaInputA('M-amount', expenseToEdit.amount);
+          updateKanmaInputA('M-cardAmount', expenseToEdit.cardAmount);
+          updateKanmaInputA('M-amount-excluding-tax', expenseToEdit.taxExcludedAmount);
+          
+          handleTaxCalculationA(); // レート更新と再計算
+          calculateReimburseA();
+      }
+
+      function resetExpenseModalForm() {
+        document.getElementById('expense-form').reset();
+        document.getElementById('M-expenseId').value = '';
+        document.getElementById('M-receiptUrl').value = ''; 
+        document.getElementById('M-receiptImage').value = '';
+        document.getElementById('M-area-wrapper').style.display = 'none';
+        document.getElementById('M-areaCode').required = false;
+        document.getElementById('M-transport-alert').style.display = 'none';
+        document.getElementById('M-isCard').checked = false;
+        document.getElementById('M-card-wrapper').style.display = 'none'; 
+        document.getElementById('M-method').value = '仮払金';
+        currentExpenseLimit = null;
+        updateKanmaInputA('M-amount', '');
+        updateKanmaInputA('M-cardAmount', '');
+        updateKanmaInputA('M-amount-excluding-tax', '');
+        
+        loadTaxTypesMasterA(); // リセット時にデフォルトに戻す
+        
+        document.getElementById('M-delete-expense').style.display = 'none';
+        document.getElementById('M-useDate').value = document.getElementById('A-date').value || getTodayString();
+        // 支払先・領収書の表示をリセット
+        var payeeWrapper = document.getElementById('M-payee').closest('.col-12');
+        if (payeeWrapper) { payeeWrapper.style.display = ''; document.getElementById('M-payee').required = false; }
+        var receiptWrapper = document.getElementById('M-receiptImage').closest('.col-12');
+        if (receiptWrapper) receiptWrapper.style.display = '';
+        document.getElementById('receipt-amount-note').style.display = 'none';
+        var remarksEl = document.getElementById('M-remarks');
+        if (remarksEl) { remarksEl.required = false; remarksEl.placeholder = '例: 会議のため'; }
+        var mark = document.getElementById('remarks-required-mark');
+        if (mark) mark.style.display = 'none';
+      }
+
+      function getExpenseItemName(code) {
+        var item = EXPENSE_ITEMS_MASTER.find(function(i) { return i['経費項目コード'] == code; });
+        return item ? item['経費項目'] : code;
+      }
+      
+      function onExpenseModalShowA() {}
+      function onExpenseModalHideA() { isUploading = false; }
+
+      // 修正: 画像のクライアント側圧縮処理 (高速化)
+      function handleImageUploadA(event) {
+        // 重要: ファイルが選択されたら、古いURLは即座にクリアする
+        document.getElementById('M-receiptUrl').value = '';
+
+        var file = event.target.files[0];
+        if (!file) return;
+
+        // PDFの場合は圧縮せずそのまま送信
+        if (file.type === 'application/pdf') {
+            uploadToGas(file, file.name, false);
+            return;
+        }
+
+        // 画像の場合はCanvasでリサイズ・圧縮
+        var reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = function(e) {
+            var img = new Image();
+            img.src = e.target.result;
+            img.onload = function() {
+                var maxWidth = 1024; // 最大幅を1024pxに制限
+                var maxHeight = 1024;
+                var width = img.width;
+                var height = img.height;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width *= maxHeight / height;
+                        height = maxHeight;
+                    }
+                }
+
+                var canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // JPEG, 品質0.7で圧縮
+                var compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                var newFileName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+                
+                uploadToGas(compressedDataUrl, newFileName, true);
+            };
+        };
+      }
+
+      // アップロード共通処理
+      function uploadToGas(data, fileName, isDataUrl) {
+          isUploading = true;
+          showLoading(true, '領収書をアップロード中...');
+          document.getElementById('M-submit-expense').disabled = true;
+          
+          // PDFの場合はFileReaderでDataURL化が必要 (引数がFileオブジェクトの場合)
+          if (!isDataUrl && typeof data !== 'string') {
+              var reader = new FileReader();
+              reader.readAsDataURL(data);
+              reader.onload = function() {
+                  uploadToGas(reader.result, fileName, true);
+              };
+              return;
+          }
+
+          google.script.run
+            .withSuccessHandler(function(res) {
+              showLoading(false);
+              document.getElementById('M-submit-expense').disabled = false;
+              if (res.status === 'success') {
+                  document.getElementById('M-receiptUrl').value = res.url;
+                  isUploading = false;
+                  showCustomAlert('領収書のアップロードが完了しました。');
+              }
+              else { isUploading = false; onApiError(res.message); }
+            })
+            .withFailureHandler(function(error) {
+              isUploading = false;
+              showLoading(false);
+              document.getElementById('M-submit-expense').disabled = false;
+              onApiError(error);
+            })
+            .uploadReceiptImage(data, fileName); // data is base64 string
+      }
+
+      function applyExpenseRequirementsA(itemCode) {
+        var req = expenseRequirementsMap[String(itemCode)];
+
+        // 支払先
+        var payeeWrapper = document.getElementById('M-payee').closest('.col-12');
+        if (payeeWrapper) {
+          if (req && req['支払先'] === '不要') {
+            payeeWrapper.style.display = 'none';
+            document.getElementById('M-payee').required = false;
+            document.getElementById('M-payee').value = '';
+          } else {
+            payeeWrapper.style.display = '';
+            document.getElementById('M-payee').required = (req && req['支払先'] === '必須');
+          }
+        }
+
+        // 領収書
+        var receiptWrapper = document.getElementById('M-receiptImage').closest('.col-12');
+        var receiptNote = document.getElementById('receipt-amount-note');
+        if (receiptWrapper) {
+          if (req && req['領収書等'] === '不要') {
+            receiptWrapper.style.display = 'none';
+            if (receiptNote) receiptNote.style.display = 'none';
+          } else {
+            receiptWrapper.style.display = '';
+            if (receiptNote) receiptNote.style.display = (req && req['領収書等'] === '不要（3万円未満）') ? '' : 'none';
+          }
+        }
+
+        // 備考（必須/任意の切替 + プレースホルダー）
+        var remarksEl = document.getElementById('M-remarks');
+        if (remarksEl) {
+          var isRemarksRequired = req && req['備考'] === '必須';
+          remarksEl.required = isRemarksRequired;
+          var mark = document.getElementById('remarks-required-mark');
+          if (mark) mark.style.display = isRemarksRequired ? '' : 'none';
+          var bikoEx = req ? String(req['備考例（変更候補）'] || '').trim() : '';
+          var placeholder = (bikoEx && bikoEx !== '空欄') ? bikoEx : '';
+          remarksEl.placeholder = placeholder;
+        }
+
+        // 消費税区分デフォルト設定（ユーザーの職種区分から）
+        var jobCat = String(EMPLOYEE_INFO.jobCategoryCode || '');
+        var patKey = String(itemCode) + '_' + jobCat;
+        var pattern = expensePatternMap[patKey];
+        if (pattern && pattern['消費税選択区分コード']) {
+          var taxSelect = document.getElementById('M-tax-type-select');
+          if (taxSelect) taxSelect.value = String(pattern['消費税選択区分コード']);
+        }
+      }
+
+      function onItemCodeChangeA() {
+        var itemCode = document.getElementById('M-itemCode').value;
+        var itemName = getExpenseItemName(itemCode) || '';
+        
+        var wrapper = document.getElementById('M-area-wrapper');
+        var areaSelect = document.getElementById('M-areaCode');
+        
+        var isTransport = (itemName.indexOf('交通費') > -1 || itemName.indexOf('電車') > -1 || itemName.indexOf('バス') > -1 || itemName.indexOf('乗車券') > -1);
+        var transportAlert = document.getElementById('M-transport-alert');
+        var remarksInput = document.getElementById('M-remarks');
+        
+        if (isTransport) {
+            transportAlert.style.display = 'block';
+            remarksInput.placeholder = '区間を入力 (例: 新宿-横浜 往復)';
+        } else {
+            transportAlert.style.display = 'none';
+            remarksInput.placeholder = '例: 会議のため';
+        }
+
+        currentExpenseLimit = null;
+        if (itemCode === '101') {
+          wrapper.style.display = 'none'; areaSelect.required = false; areaSelect.value = '';
+          var limit101 = getExpenseLimitA(itemCode);
+          if (limit101!==null) updateKanmaInputA('M-amount', limit101); else updateKanmaInputA('M-amount', '');
+        } else if (itemCode === '102') {
+          wrapper.style.display = 'block'; areaSelect.required = true;
+          var limit102 = getExpenseLimitA(itemCode, areaSelect.value || '000000');
+          if (limit102!==null) updateKanmaInputA('M-amount', limit102); else updateKanmaInputA('M-amount', '');
+        } else {
+          wrapper.style.display = 'none'; areaSelect.required = false;
+          updateKanmaInputA('M-amount', '');
+        }
+        applyExpenseRequirementsA(itemCode);
+        handleTaxCalculationA(); // 再計算
+        checkExpenseLimitA();
+        calculateReimburseA();
+      }
+
+      function onAreaCodeChangeA() { onItemCodeChangeA(); }
+
+      function getExpenseLimitA(itemCode, areaCode) {
+        try {
+          var rule = TRAVEL_RULES_MASTER.find(function(r) { return String(r['役職']) === String(EMPLOYEE_INFO.positionCode); });
+          if (!rule) return null;
+          if (itemCode === '101') return parseFloat(rule['日当']) || 0;
+          if (itemCode === '102') {
+            var base = parseFloat(rule['宿泊費']) || 0;
+            var area = LODGING_AREAS_MASTER.find(function(a) { return String(a['地域区分']) === String(areaCode); });
+            return base + (area ? (parseFloat(area['追加宿泊費'])||0) : 0);
+          }
+          return null;
+        } catch(e) { return null; }
+      }
+      
+      function checkExpenseLimitA() {
+        var val = parseFloat(document.getElementById('M-amount').value) || 0;
+        var disp = document.getElementById('M-amount-display-input');
+        if (currentExpenseLimit !== null && val > currentExpenseLimit) disp.classList.add('amount-over-limit');
+        else disp.classList.remove('amount-over-limit');
+      }
+
+      function calculateReimburseA() {
+        var amt = parseFloat(document.getElementById('M-amount').value) || 0;
+        var card = parseFloat(document.getElementById('M-cardAmount').value) || 0;
+        var reim = amt - card;
+        document.getElementById('M-reimburseAmount').value = reim;
+        document.getElementById('M-reimburse-display').textContent = formatNumber(reim) + ' 円';
+      }
+      
+      // 修正: 消費税区分マスタに基づいた計算ロジック
+      function handleTaxCalculationA(e) {
+        var select = document.getElementById('M-tax-type-select');
+        var selectedOption = select.options[select.selectedIndex];
+        var rate = selectedOption ? parseFloat(selectedOption.dataset.rate) : 0;
+        
+        // 修正: 念のための補正 (rateが1以上なら100で割る)
+        if (rate >= 1) rate = rate / 100;
+        
+        var inc = parseFloat(document.getElementById('M-amount').value) || 0;
+        var excInput = document.getElementById('M-amount-excluding-tax');
+        
+        // 税込から税抜を計算 (四捨五入の標準的な計算)
+        if (rate > 0 && inc > 0) {
+            var exc = Math.round(inc / (1 + rate));
+            excInput.value = exc;
+            document.getElementById('M-tax-excluded-display').textContent = formatNumber(exc);
+        } else {
+            excInput.value = inc;
+            document.getElementById('M-tax-excluded-display').textContent = formatNumber(inc);
+        }
+        
+        checkExpenseLimitA();
+      }
+
+      function addExpenseItemA() {
+        if (isUploading) { showCustomAlert('領収書のアップロードが完了するまでお待ちください。'); return; }
+        var form = document.getElementById('expense-form');
+        if (!form.checkValidity()) { form.classList.add('was-validated'); showCustomAlert('必須項目を入力してください。'); return; }
+
+        var reimburseAmountVal = parseFloat(document.getElementById('M-reimburseAmount').value) || 0;
+        if (reimburseAmountVal < 0) {
+          showCustomAlert('精算金額がマイナスになっています。\nカード利用額が税込金額を上回っています。修正してください。');
+          return;
+        }
+        
+        var receiptUrlVal = document.getElementById('M-receiptUrl').value;
+        var receiptFileVal = document.getElementById('M-receiptImage').value;
+
+        if (receiptFileVal && !receiptUrlVal) {
+          showCustomAlert('領収書のアップロードが完了していません。\nしばらく待ってから再度「登録」ボタンを押してください。');
+          return;
+        }
+
+        var itemCodeForCheck = document.getElementById('M-itemCode').value;
+        var reqForCheck = expenseRequirementsMap[String(itemCodeForCheck)];
+        if (reqForCheck && reqForCheck['領収書等'] === '必要' && !receiptUrlVal) {
+          showCustomAlert('この経費項目には領収書が必要です。アップロードしてから登録してください。');
+          return;
+        }
+
+        if (reqForCheck && reqForCheck['備考'] === '必須' && !document.getElementById('M-remarks').value.trim()) {
+          showCustomAlert('備考欄は必須です。\n' + (reqForCheck['備考例（変更候補）'] && reqForCheck['備考例（変更候補）'] !== '空欄' ? '例: ' + reqForCheck['備考例（変更候補）'] : '内容を入力してください。'));
+          return;
+        }
+
+        if (reqForCheck && reqForCheck['領収書等'] === '不要（3万円未満）') {
+          var amountForCheck = parseFloat(document.getElementById('M-amount').value) || 0;
+          if (amountForCheck >= 30000 && !receiptUrlVal) {
+            showCustomAlert('金額が3万円以上のため領収書が必要です。アップロードしてから登録してください。');
+            return;
+          }
+        }
+
+        // 修正: 消費税区分コードを取得
+        var taxTypeSelect = document.getElementById('M-tax-type-select');
+        var taxTypeVal = taxTypeSelect.value;
+        var selectedOption = taxTypeSelect.options[taxTypeSelect.selectedIndex];
+        var taxRateVal = parseFloat(selectedOption.dataset.rate) || 0;
+        
+        // 追加: 念のための補正
+        if (taxRateVal >= 1) taxRateVal = taxRateVal / 100;
+
+        var taxClassVal = selectedOption.dataset.class || ''; 
+        var taxCalcTypeVal = selectedOption.dataset.calc || ''; 
+
+        var expense = {
+          timeSlot: document.getElementById('M-timeSlot').value,
+          useDate: document.getElementById('M-useDate').value,
+          itemCode: document.getElementById('M-itemCode').value,
+          amount: parseFloat(document.getElementById('M-amount').value) || 0,
+          remarks: document.getElementById('M-remarks').value,
+          receiptUrl: receiptUrlVal,
+          areaCode: document.getElementById('M-areaCode').value || '',
+          payee: document.getElementById('M-payee').value,
+          isCard: document.getElementById('M-isCard').checked,
+          cardAmount: parseFloat(document.getElementById('M-cardAmount').value) || 0,
+          reimburseAmount: reimburseAmountVal,
+          method: document.getElementById('M-method').value,
+          taxExcludedAmount: parseFloat(document.getElementById('M-amount-excluding-tax').value) || 0,
+          // 既存項目互換: %表記で保存
+          taxRate: (taxRateVal * 100).toString(), 
+          taxRateCustom: null,
+          // 新規項目
+          taxType: taxTypeVal,
+          taxClass: taxClassVal, 
+          taxCalcType: taxCalcTypeVal 
+        };
+        
+        var eid = document.getElementById('M-expenseId').value;
+        var timeSlot = expense.timeSlot;
+        currentExpenses = currentExpenses.filter(function(ex) { return ex.timeSlot !== timeSlot; });
+        
+        if (!eid) { expense.expenseId = 'temp_' + Date.now(); } else { expense.expenseId = eid; }
+        currentExpenses.push(expense);
+
+        renderTimesheetA();
+        updateExpenseBadgeA(expense.timeSlot);
+        expenseModalInstance.hide();
+      }
+      
+      function deleteExpenseItemA() {
+        var eid = document.getElementById('M-expenseId').value;
+        var ts = document.getElementById('M-timeSlot').value;
+        if (!eid) return;
+        showCustomAlert('削除しますか？', function() {
+          currentExpenses = currentExpenses.filter(function(ex) { return ex.expenseId !== eid; });
+          renderTimesheetA();
+          updateExpenseBadgeA(ts);
+          expenseModalInstance.hide();
+        });
+      }
+
+      function updateExpenseBadgeA(timeSlot) {
+        var count = currentExpenses.filter(function(ex) { return ex.timeSlot === timeSlot; }).length;
+        var badge = document.getElementById('expense-badge-' + timeSlot);
+        if (badge) count > 0 ? badge.classList.add('has-expense') : badge.classList.remove('has-expense');
+      }
+
+      function saveOrSubmitReportA(status) {
+        var date = document.getElementById('A-date').value;
+        if (!date) { showCustomAlert('日付は必須です。'); return; }
+        
+        syncActivitiesFromDOM();
+        saveRecentVisitPlaces(currentActivities);
+
+        if (Object.keys(currentActivities).length === 0) { showCustomAlert('活動内容を入力してください。'); return; }
+        
+        var actionName = (status === '申請中') ? '申請' : '一時保存';
+        var doneMessage = (status === '申請中') ? '申請が完了しました。' : '保存が完了しました。';
+        
+        showCustomAlert('「' + actionName + '」します。よろしいですか？', function() {
+          showLoading(true, actionName + '中...');
+          var data = {
+            header: {
+              reportId: document.getElementById('A-reportId').value,
+              date: date, 
+              remarks: document.getElementById('A-remarks').value,
+              startMeter: document.getElementById('A-startMeter').value,
+              endMeter: document.getElementById('A-endMeter').value,
+              mileage: parseFloat(document.getElementById('A-mileageDisplay').textContent)||0,
+            },
+            activities: compressActivities_(currentActivities),
+            expenses: currentExpenses
+          };
+          google.script.run
+            .withSuccessHandler(function(res) {
+              showLoading(false);
+              if (res.status === 'success') showCustomAlert(doneMessage, function() { resetFormA(); showView('view-E-my-reports'); });
+              else onApiError(res.message);
+            })
+            .withFailureHandler(onApiError)
+            .saveOrSubmitDailyReport(data, status);
+        });
+      }
+
+      function compressActivities_(actObj) {
+        var arr = []; var cur = null;
+        for (var i = 0; i < TIME_SLOTS.length - 1; i++) {
+          var s = TIME_SLOTS[i], e = TIME_SLOTS[i+1], a = actObj[s];
+          if (!a || !a.type) { if (cur) { arr.push(cur); cur=null; } continue; }
+          
+          var contentStr = (a.place ? '【' + a.place + '】 ' : '') + (a.detail || '');
+          
+          if (!cur) { cur = { startTime: s, endTime: e, type: a.type, content: contentStr }; continue; }
+          if (cur.type === a.type && cur.content === contentStr) cur.endTime = e;
+          else { arr.push(cur); cur = { startTime: s, endTime: e, type: a.type, content: contentStr }; }
+        }
+        if (cur) arr.push(cur);
+        return arr;
+      }
+
+      function renderPendingListB(arr) {
+        var list = document.getElementById('B-approval-list-body');
+        var badge = document.getElementById('approval-count-badge');
+        if (badge) badge.innerText = arr.length || '';
+        var selectAll = document.getElementById('B-select-all');
+        if (selectAll) selectAll.checked = false;
+        updateBulkSelectionB();
+
+        if (arr.length === 0) {
+          list.innerHTML = '<tr><td colspan="5" class="text-center">なし</td></tr>';
+        } else {
+          arr.sort(function(a,b){ return (a['日付']||'').localeCompare(b['日付']||''); });
+          var rowsHtml = '';
+          arr.forEach(function(r) {
+            var rid = r['日報ID'];
+            var date = formatDateWithDay(r['日付']);
+            var person = r['担当者'] || r['氏名'] || r['申請者'] || r['社員名'] || '-';
+            var cost = formatNumber(r['合計経費']);
+            var safeRid = rid ? rid.replace(/'/g, "\\'") : '';
+            rowsHtml += '<tr>' +
+                '<td onclick="event.stopPropagation()"><input type="checkbox" class="form-check-input B-row-checkbox" value="' + safeRid + '" onchange="updateBulkSelectionB()"></td>' +
+                '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' + date + '</td>' +
+                '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' + person + '</td>' +
+                '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')"><span class="badge bg-primary">承認待ち</span></td>' +
+                '<td style="cursor:pointer;" onclick="loadReportDetailsC(\'' + safeRid + '\', \'view-B-approval-list\')">' + cost + '</td>' +
+            '</tr>';
+          });
+          list.innerHTML = rowsHtml;
+        }
+      }
+
+      function loadPendingReportsB(bg) {
+        var list = document.getElementById('B-approval-list-body');
+        list.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2" role="status"></span>読み込み中...</td></tr>';
+        var selectAll = document.getElementById('B-select-all');
+        if (selectAll) selectAll.checked = false;
+        updateBulkSelectionB();
+
+        google.script.run
+          .withSuccessHandler(function(d) { renderPendingListB(d.pending || []); })
+          .withFailureHandler(function(e) {
+            document.getElementById('B-approval-list-body').innerHTML = '<tr><td colspan="5" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>読み込みに失敗しました。更新ボタンを押してください。</td></tr>';
+            onApiError(e);
+          })
+          .getPendingReports();
+      }
+
+      function toggleSelectAllB(checkbox) {
+        document.querySelectorAll('.B-row-checkbox').forEach(function(cb) {
+          cb.checked = checkbox.checked;
+        });
+        updateBulkSelectionB();
+      }
+
+      function updateBulkSelectionB() {
+        var checked = document.querySelectorAll('.B-row-checkbox:checked');
+        var all = document.querySelectorAll('.B-row-checkbox');
+        var count = checked.length;
+        var bar = document.getElementById('B-bulk-action-bar');
+        var countLabel = document.getElementById('B-selected-count');
+        var selectAll = document.getElementById('B-select-all');
+
+        if (bar) bar.style.display = count > 0 ? 'flex' : 'none';
+        if (countLabel) countLabel.textContent = count + '件選択中';
+        if (selectAll) {
+          selectAll.indeterminate = count > 0 && count < all.length;
+          selectAll.checked = all.length > 0 && count === all.length;
+        }
+      }
+
+      function handleBulkApproveB() {
+        var checked = Array.from(document.querySelectorAll('.B-row-checkbox:checked'));
+        var rids = checked.map(function(cb) { return cb.value; });
+        if (rids.length === 0) return;
+
+        showCustomAlert(rids.length + '件の日報を一括承認します。よろしいですか？', function() {
+          var errors = 0;
+
+          function approveNext(idx) {
+            if (idx >= rids.length) {
+              showLoading(false);
+              var msg = errors === 0
+                ? rids.length + '件の承認が完了しました。'
+                : '承認完了（' + (rids.length - errors) + '件成功・' + errors + '件エラー）';
+              showCustomAlert(msg, function() {
+                var list = document.getElementById('B-approval-list-body');
+                list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>更新中...</td></tr>';
+                loadPendingReportsB(true);
+              });
+              return;
+            }
+            showLoading(true, '一括承認中 (' + (idx + 1) + '/' + rids.length + ')...');
+            google.script.run
+              .withSuccessHandler(function(res) {
+                if (res.status === 'error') errors++;
+                approveNext(idx + 1);
+              })
+              .withFailureHandler(function() {
+                errors++;
+                approveNext(idx + 1);
+              })
+              .approveReport(rids[idx]);
+          }
+
+          approveNext(0);
+        });
+      }
+
+      // ... existing loadReportDetailsC ...
+      function loadReportDetailsC(rid, backView) {
+        if(!rid) {
+            onApiError('日報IDが指定されていません。');
+            return;
+        }
+        showLoading(true);
+        viewC_ReturnView = backView;
+        google.script.run.withSuccessHandler(function(d){
+          try {
+              if (!d || !d.header || !d.header['日報ID']) {
+                  throw new Error('日報データの取得に失敗しました。データが存在しない可能性があります。');
+              }
+              
+              var h = d.header;
+              document.getElementById('C-header-date').innerText = formatDateWithDay(h['日付']);
+              document.getElementById('C-header-applicant').innerText = h['担当者'] || h['氏名'] || h['申請者'] || h['社員名'] || '-';
+              document.getElementById('C-header-total-expense').innerText = formatNumber(h['合計経費']);
+              document.getElementById('C-header-status-badge').innerText = h['承認ステータス'];
+              document.getElementById('C-header-apply-date').innerText = formatDateTime(h['申請日'] || h['作成日']);
+              document.getElementById('C-header-mileage').innerText = h['本日の走行距離'] || h['走行距離'] || '0';
+              document.getElementById('C-header-movement-time').innerText = formatHours(h['移動時間合計 (時間)'] || h['移動時間合計'] || 0);
+              document.getElementById('C-header-meeting-time').innerText = formatHours(h['商談時間合計 (時間)'] || h['商談時間合計'] || 0);
+              
+              // 追加: 新しい時間項目の表示
+              document.getElementById('C-header-collection-time').innerText = formatHours(h['回収・搬入時間合計 (時間)'] || h['回収・搬入時間合計'] || 0);
+              
+              // 活動合計時間の計算 (移動 + 商談 + 回収・搬入)
+              var mv = parseFloat(h['移動時間合計 (時間)'] || h['移動時間合計'] || 0);
+              var mt = parseFloat(h['商談時間合計 (時間)'] || h['商談時間合計'] || 0);
+              var cl = parseFloat(h['回収・搬入時間合計 (時間)'] || h['回収・搬入時間合計'] || 0);
+              document.getElementById('C-header-total-activity-time').innerText = formatHours(mv + mt + cl);
+
+              document.getElementById('C-header-remarks').innerText = h['備考'] || '';
+              
+              var rejReason = h['差戻し理由'];
+              if (rejReason) {
+                  document.getElementById('C-rejection-reason').innerText = rejReason;
+                  document.getElementById('C-rejection-reason-wrapper').style.display = 'block';
+              } else {
+                  document.getElementById('C-rejection-reason-wrapper').style.display = 'none';
+              }
+
+              var histApprover = h['承認者'] || h['チェック者'] || '';
+              var histDate = h['承認日時'] || h['チェック日時'] || '';
+              var histCard = document.getElementById('C-history-card');
+              if (histApprover || histDate) {
+                document.getElementById('C-history-approver').innerText = histApprover || 'N/A';
+                document.getElementById('C-history-approve-date').innerText = histDate ? formatDateTime(histDate) : 'N/A';
+                if (histCard) histCard.style.display = '';
+              } else {
+                if (histCard) histCard.style.display = 'none';
+              }
+              
+              var actBody = document.getElementById('C-activities-body');
+              actBody.innerHTML = '';
+              if (d.activities && d.activities.length > 0) {
+                  d.activities.sort(function(a,b){ return (a['開始時刻']||'').localeCompare(b['開始時刻']||''); });
+                  d.activities.forEach(function(act) {
+                      var range = (act['開始時刻']||'') + ' 〜 ' + (act['終了時刻']||'');
+                      actBody.innerHTML += '<tr><td>'+range+'</td><td>'+(act['活動区分']||'')+'</td><td>'+(act['活動内容']||'')+'</td></tr>';
+                  });
+              } else {
+                  actBody.innerHTML = '<tr><td colspan="3">なし</td></tr>';
+              }
+
+              var expBody = document.getElementById('C-expenses-body');
+              expBody.innerHTML = '';
+              if (d.expenses && d.expenses.length > 0) {
+                d.expenses.forEach(function(ex) {
+                  var urlLink = ex.receiptUrl ? '<a href="'+ex.receiptUrl+'" onclick="window.open(this.href,\'receipt_window\',\'noopener,width=900,height=700\'); return false;"><i class="bi bi-link-45deg"></i></a>' : '-';
+                  var areaDisplay = ex.areaCode || '';
+                  if (areaDisplay) {
+                    var areaObj = LODGING_AREAS_MASTER.find(function(a) { return String(a['地域区分']) === String(areaDisplay); });
+                    if (areaObj) areaDisplay = areaObj['地域区分名'];
+                  }
+                  expBody.innerHTML += '<tr><td>'+ex.timeSlot+'</td><td>'+formatDateWithDay(ex.useDate)+'</td><td>'+ex.itemName+'</td><td>'+ex.payee+'</td><td>'+formatNumber(ex.amount)+'</td><td>'+(ex.method||'仮払金')+'</td><td>'+formatNumber(ex.cardAmount)+'</td><td>'+(ex.isCard?'あり':'')+'</td><td>'+formatNumber(ex.reimburseAmount)+'</td><td>'+areaDisplay+'</td><td>'+ex.remarks+'</td><td>'+urlLink+'</td></tr>';
+                });
+              } else expBody.innerHTML = '<tr><td colspan="12">なし</td></tr>';
+
+              var btnArea = document.getElementById('C-approval-buttons');
+              btnArea.style.display = 'none'; btnArea.innerHTML = '';
+              document.getElementById('C-reportId').value = h['日報ID'];
+              
+              var isSelfApprovalUser = EMPLOYEE_INFO.approver2Id && String(EMPLOYEE_INFO.approver2Id) === String(EMPLOYEE_INFO.id);
+              var isApprovableStatus = ['申請中','1次承認済','チェック済'].includes(h['承認ステータス']);
+              var canApproveFromB = (IS_CHECKER || IS_APPROVER) && backView === 'view-B-approval-list';
+              var canSelfApproveFromE = isSelfApprovalUser && IS_APPROVER && backView === 'view-E-my-reports';
+              if ((canApproveFromB || canSelfApproveFromE) && isApprovableStatus) {
+                btnArea.innerHTML = '<button class="btn btn-danger me-2" onclick="handleRejectC()">差戻し</button><button class="btn btn-success" onclick="handleApproveC()">承認</button>';
+                btnArea.style.display = 'block';
+              }
+              showView('view-C-report-detail');
+          } catch (e) {
+              onApiError(e);
+          } finally {
+              showLoading(false);
+          }
+        }).withFailureHandler(function(e) {
+            showLoading(false);
+            onApiError(e);
+        }).getReportDetails(rid);
+      }
+      
+      function handleApproveC() {
+        showCustomAlert('承認しますか？', function() {
+          showLoading(true);
+          google.script.run.withSuccessHandler(function(res) {
+            showLoading(false);
+            showCustomAlert(res.message, function() {
+              showView(viewC_ReturnView);
+              if (viewC_ReturnView === 'view-B-approval-list') {
+                if (res.pendingReports) {
+                  renderPendingListB(res.pendingReports.pending || []);
+                } else {
+                  loadPendingReportsB();
+                }
+              }
+            });
+          }).withFailureHandler(onApiError).approveReportAndGetPending(document.getElementById('C-reportId').value);
+        });
+      }
+      function handleRejectC() {
+        showCustomPrompt('差戻し理由:', function(res) {
+          if (!res) return;
+          showLoading(true);
+          google.script.run.withSuccessHandler(function(r) {
+            showLoading(false);
+            showCustomAlert(r.message, function() {
+              showView(viewC_ReturnView);
+              if (viewC_ReturnView === 'view-B-approval-list') {
+                if (r.pendingReports) {
+                  renderPendingListB(r.pendingReports.pending || []);
+                } else {
+                  loadPendingReportsB();
+                }
+              }
+            });
+          }).rejectReportAndGetPending(document.getElementById('C-reportId').value, res);
+        });
+      }
+
+      function loadMyReportsE() {
+        var list = document.getElementById('E-my-reports-list-body');
+        list.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2" role="status"></span>読み込み中...</td></tr>';
+        document.getElementById('E-no-reports-msg').style.display = 'none';
+        google.script.run
+          .withSuccessHandler(function(data) {
+            allMyReportsCache = data;
+            filterReportsE();
+          })
+          .withFailureHandler(function(e) {
+            list.innerHTML = '<tr><td colspan="11" class="text-center py-3 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>読み込みに失敗しました。更新ボタンを押してください。</td></tr>';
+            onApiError(e);
+          })
+          .getMyReports();
+      }
+      
+      // 修正: 削除ボタンの追加
+      function filterReportsE() {
+        var list = document.getElementById('E-my-reports-list-body');
+        list.innerHTML = '';
+        var dateFrom = document.getElementById('S-date-from').value;
+        var dateTo = document.getElementById('S-date-to').value;
+        var amtMin = parseFloat(document.getElementById('S-amount-min').value) || null;
+        var amtMax = parseFloat(document.getElementById('S-amount-max').value) || null;
+        var keyword = document.getElementById('S-keyword').value.toLowerCase().trim();
+
+        var filteredReports = allMyReportsCache.filter(function(r) {
+          if (dateFrom && r['日付'] < dateFrom.replace(/-/g,'/')) return false;
+          if (dateTo && r['日付'] > dateTo.replace(/-/g,'/')) return false;
+          var total = parseFloat(r['合計経費']);
+          if (amtMin !== null && total < amtMin) return false;
+          if (amtMax !== null && total > amtMax) return false;
+          if (keyword) {
+              var searchStr = (r['備考']||'') + ' ' + (r['日付']||'') + ' ' + (r['承認ステータス']||'');
+              if (r.expenses) {
+                r.expenses.forEach(function(ex) {
+                    searchStr += ' ' + (ex.itemName||'') + ' ' + (ex.payee||'') + ' ' + (ex.remarks||'');
+                });
+              }
+              if (searchStr.toLowerCase().indexOf(keyword) === -1) return false;
+          }
+          return true;
+        });
+
+        if (filteredReports.length === 0) { document.getElementById('E-no-reports-msg').style.display = 'block'; return; }
+        document.getElementById('E-no-reports-msg').style.display = 'none';
+        
+        filteredReports.sort(function(a, b) {
+          var statusOrder = { '一時保存': 1, '差戻し': 2, '申請中': 3, '承認済': 4, '精算申請済': 5 };
+          var sA = statusOrder[a['承認ステータス']] || 99;
+          var sB = statusOrder[b['承認ステータス']] || 99;
+          if (sA !== sB) return sA - sB;
+          return (b['日付']||'').localeCompare(a['日付']||'');
+        });
+
+        var currentStatus = '';
+        filteredReports.forEach(function(r) {
+          var rId = r['日報ID'];
+          var status = r['承認ステータス'];
+          var date = r['日付'] ? formatDateWithDay(r['日付']) : '日付なし';
+          var total = formatNumber(r['合計経費']);
+          var remarks = r['備考'] || '';
+          var expenses = r['expenses'] || []; 
+          
+          if (status !== currentStatus) {
+            currentStatus = status;
+            var groupTr = document.createElement('tr');
+            groupTr.innerHTML = '<td colspan="11" class="status-group-header">' + currentStatus + '</td>';
+            list.appendChild(groupTr);
+          }
+          
+          var statusBadge = '';
+          var badgeClass = 'bg-secondary';
+          var statusLabel = status;
+          
+          switch (status) {
+            case '申請中': badgeClass = 'bg-primary'; statusLabel = '申請中'; break;
+            case 'チェック済': badgeClass = 'bg-warning text-dark'; statusLabel = '承認待ち'; break; 
+            case '承認済': 
+            case '精算申請済': badgeClass = 'bg-info text-dark'; statusLabel = '精算申請済'; break;
+            case '差戻し': badgeClass = 'bg-danger'; statusLabel = '差戻し'; break;
+            case '一時保存': badgeClass = 'bg-warning text-dark'; statusLabel = '一時保存'; break; 
+          }
+          statusBadge = '<span class="badge ' + badgeClass + '">' + statusLabel + '</span>';
+
+          var actionButtons = '';
+          if (status === '一時保存' || status === '差戻し') {
+            actionButtons = '<button class="btn btn-sm btn-primary text-nowrap mb-1" onclick="handleEditReportE(\'' + rId + '\')"><i class="bi bi-pencil"></i> 編集</button>';
+            if (status === '一時保存') {
+                actionButtons += '<br><button class="btn btn-sm btn-outline-danger text-nowrap" onclick="handleDeleteReportE(\'' + rId + '\')"><i class="bi bi-trash"></i> 削除</button>';
+            }
+          } else {
+            actionButtons = '<button class="btn btn-sm btn-outline-secondary text-nowrap" onclick="loadReportDetailsC(\'' + rId + '\', \'view-E-my-reports\')"><i class="bi bi-eye"></i> 表示</button>';
+          }
+          if (status === '申請中') {
+            actionButtons += '<br><button class="btn btn-sm btn-outline-danger mt-1 text-nowrap" onclick="handleWithdrawE(\'' + rId + '\')"><i class="bi bi-arrow-counterclockwise"></i> 取り下げ</button>';
+          }
+
+          var reimburseTotal = 0;
+          expenses.forEach(function(exp) { reimburseTotal += parseFloat(exp.reimburseAmount) || 0; });
+
+          var rowCount = Math.max(1, expenses.length);
+          for (var i = 0; i < rowCount; i++) {
+            var tr = document.createElement('tr');
+            if (i === 0) {
+              var tdDate = document.createElement('td'); tdDate.rowSpan = rowCount; tdDate.textContent = date; tr.appendChild(tdDate);
+              var tdStatus = document.createElement('td'); tdStatus.rowSpan = rowCount; tdStatus.className = "text-center"; tdStatus.innerHTML = statusBadge; tr.appendChild(tdStatus);
+              var tdSubject = document.createElement('td'); tdSubject.rowSpan = rowCount; tdSubject.textContent = remarks; tr.appendChild(tdSubject);
+              var tdTotal = document.createElement('td'); tdTotal.rowSpan = rowCount; tdTotal.className = "text-end fw-bold"; tdTotal.textContent = total; tr.appendChild(tdTotal);
+              var tdReimburse = document.createElement('td'); tdReimburse.rowSpan = rowCount; tdReimburse.className = "text-end fw-bold"; tdReimburse.textContent = formatNumber(reimburseTotal); tr.appendChild(tdReimburse);
+            }
+            if (expenses[i]) {
+              var exp = expenses[i];
+              var rawDate = exp.useDate;
+              var useDate = '-';
+              if (rawDate) {
+                var dateStr = String(rawDate).split('T')[0]; 
+                useDate = dateStr.replace(/-/g, '/');
+              }
+              var receiptLink = '-';
+              if (exp.receiptUrl) { receiptLink = '<a href="' + exp.receiptUrl + '" onclick="window.open(this.href,\'receipt_window\',\'noopener,width=900,height=700\'); return false;"><i class="bi bi-paperclip"></i></a>'; }
+              tr.innerHTML += '<td>' + useDate + '</td>';
+              tr.innerHTML += '<td>' + (exp.itemName || '') + '</td>';
+              tr.innerHTML += '<td class="text-end">' + formatNumber(exp.amount) + '</td>';
+              tr.innerHTML += '<td>' + (exp.remarks || '') + '</td>';
+              tr.innerHTML += '<td class="text-center">' + receiptLink + '</td>';
+            } else {
+              tr.innerHTML += '<td>-</td><td>-</td><td>0</td><td>-</td><td>-</td>';
+            }
+            if (i === 0) {
+              var tdAction = document.createElement('td'); tdAction.rowSpan = rowCount; tdAction.className = "text-center"; tdAction.innerHTML = actionButtons; tr.appendChild(tdAction);
+            }
+            list.appendChild(tr);
+          }
+        });
+      }
+
+      // 追加: 一時保存データの削除処理
+      function handleDeleteReportE(rid) {
+        showCustomAlert('本当にこのデータを削除しますか？\n（復元できません）', function() {
+          showLoading(true, '削除中...');
+          google.script.run.withSuccessHandler(function(res){
+            showLoading(false);
+            if(res.status === 'success') {
+                showCustomAlert(res.message, function(){ loadMyReportsE(); });
+            } else {
+                onApiError(res.message);
+            }
+          }).withFailureHandler(onApiError).deleteSavedReport(rid);
+        });
+      }
+
+      function handleEditReportE(rid) {
+        showCustomAlert('編集しますか？', function() {
+          showLoading(true);
+          google.script.run.withSuccessHandler(function(res){
+            if(res.status==='error') { showLoading(false); onApiError(res.message); return; }
+            var d = res.data;
+            resetFormA();
+            document.getElementById('A-reportId').value = d.header['日報ID'];
+            document.getElementById('A-date').value = d.header['日付'].replace(/\//g,'-');
+            document.getElementById('A-remarks').value = d.header['備考'];
+            document.getElementById('A-startMeter').value = d.header['始時メーター'] || '';
+            document.getElementById('A-endMeter').value = d.header['終時メーター'] || '';
+            var savedMileage = parseFloat(d.header['本日の走行距離'] || d.header['走行距離'] || '0') || 0;
+            document.getElementById('A-mileageDisplay').textContent = savedMileage + ' km';
+
+            currentActivities = d.activities || {};
+            currentExpenses = d.expenses;
+            renderTimesheetA();
+            showLoading(false);
+            showView('view-A-daily-report');
+          }).getReportDataForEdit(rid);
+        });
+      }
+      
+      function handleWithdrawE(reportId) {
+        if (!reportId) return;
+        showCustomAlert('この申請を取り下げて「一時保存」に戻しますか？', function() {
+          showLoading(true, '申請を取り下げ中...');
+          google.script.run
+            .withSuccessHandler(function(result) {
+              showLoading(false);
+              if (result.status === 'success') {
+                showCustomAlert(result.message, function() {
+                  loadMyReportsE();
+                });
+              } else {
+                onApiError(result.message);
+              }
+            })
+            .withFailureHandler(onApiError)
+            .withdrawReport(reportId);
+        });
+      }
+
+      function initializeKanmaInputsA() {
+        // 修正: M-amount-excluding-tax は手入力ではなくなったため除外
+        ['M-amount','M-cardAmount'].forEach(function(id) {
+          var displayInput = document.getElementById(id+'-display-input');
+          if (displayInput) {
+            displayInput.addEventListener('input', function(e) {
+                var val = e.target.value.replace(/[^0-9]/g,'');
+                document.getElementById(id).value = val;
+                e.target.value = val ? parseInt(val).toLocaleString() : '';
+                // 元のinputにイベント発火させて計算ロジックなどを動かす
+                document.getElementById(id).dispatchEvent(new Event('input'));
+            });
+          }
+        });
+      }
+      
+      function updateKanmaInputA(id, val) {
+        var input = document.getElementById(id);
+        if (input) input.value = val;
+        
+        var displayInput = document.getElementById(id+'-display-input');
+        if (displayInput) {
+            displayInput.value = (val && val>0) ? parseInt(val).toLocaleString() : '';
+        }
+      }
+    </script>
+  </body>
+  </html>
