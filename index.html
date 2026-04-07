@@ -496,15 +496,13 @@
                   <th style="min-width: 90px;">申請日</th>
                   <th style="min-width: 90px;">ステータス</th>
                   <th style="min-width: 120px;">件名</th>
-                  <th style="min-width: 100px;">合計経費<br>(円)</th>
-                  <th style="min-width: 100px;">精算金額<br>合計(円)</th>
-
                   <th style="min-width: 90px;">利用日</th>
                   <th style="min-width: 100px;">経費項目</th>
                   <th style="min-width: 100px;">経費詳細<br>(円)</th>
                   <th style="min-width: 120px;">備考</th>
                   <th style="min-width: 60px;">領収書</th>
-                  
+                  <th style="min-width: 100px;">合計経費<br>(円)</th>
+                  <th style="min-width: 100px;">精算金額<br>合計(円)</th>
                   <th style="min-width: 100px;">操作</th>
                 </tr>
               </thead>
@@ -2069,15 +2067,13 @@
               var tdDate = document.createElement('td'); tdDate.rowSpan = rowCount; tdDate.textContent = date; tr.appendChild(tdDate);
               var tdStatus = document.createElement('td'); tdStatus.rowSpan = rowCount; tdStatus.className = "text-center"; tdStatus.innerHTML = statusBadge; tr.appendChild(tdStatus);
               var tdSubject = document.createElement('td'); tdSubject.rowSpan = rowCount; tdSubject.textContent = remarks; tr.appendChild(tdSubject);
-              var tdTotal = document.createElement('td'); tdTotal.rowSpan = rowCount; tdTotal.className = "text-end fw-bold"; tdTotal.textContent = total; tr.appendChild(tdTotal);
-              var tdReimburse = document.createElement('td'); tdReimburse.rowSpan = rowCount; tdReimburse.className = "text-end fw-bold"; tdReimburse.textContent = formatNumber(reimburseTotal); tr.appendChild(tdReimburse);
             }
             if (expenses[i]) {
               var exp = expenses[i];
               var rawDate = exp.useDate;
               var useDate = '-';
               if (rawDate) {
-                var dateStr = String(rawDate).split('T')[0]; 
+                var dateStr = String(rawDate).split('T')[0];
                 useDate = dateStr.replace(/-/g, '/');
               }
               var receiptLink = '-';
@@ -2091,6 +2087,8 @@
               tr.innerHTML += '<td>-</td><td>-</td><td>0</td><td>-</td><td>-</td>';
             }
             if (i === 0) {
+              var tdTotal = document.createElement('td'); tdTotal.rowSpan = rowCount; tdTotal.className = "text-end fw-bold"; tdTotal.textContent = total; tr.appendChild(tdTotal);
+              var tdReimburse = document.createElement('td'); tdReimburse.rowSpan = rowCount; tdReimburse.className = "text-end fw-bold"; tdReimburse.textContent = formatNumber(reimburseTotal); tr.appendChild(tdReimburse);
               var tdAction = document.createElement('td'); tdAction.rowSpan = rowCount; tdAction.className = "text-center"; tdAction.innerHTML = actionButtons; tr.appendChild(tdAction);
             }
             list.appendChild(tr);
